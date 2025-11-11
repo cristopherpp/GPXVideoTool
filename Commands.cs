@@ -1,3 +1,9 @@
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Runtime;
+using LibVLCSharp.Shared;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -5,11 +11,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using Autodesk.AutoCAD.ApplicationServices;
-using Autodesk.AutoCAD.DatabaseServices;
-using Autodesk.AutoCAD.EditorInput;
-using Autodesk.AutoCAD.Geometry;
-using Autodesk.AutoCAD.Runtime;
 using Forms = System.Windows.Forms;
 
 [assembly: CommandClass(typeof(GPXVideoTools.Commands))]
@@ -30,8 +31,6 @@ namespace GPXVideoTools
         public void Terminate() { }
 
         [CommandMethod("GPX_IMPORT_CMD")]
-        public void ImportCmd() => ImportAndOpen();
-
         public static void ImportAndOpen()
         {
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument; var ed = doc.Editor;
@@ -50,7 +49,8 @@ namespace GPXVideoTools
                 DrawPolyline(utm);
 
                 bool hasEle = TrackPoints.Any(t => t.Ele.HasValue);
-                var start = TrackPoints.First().Time; var end = TrackPoints.Last().Time;
+                var start = TrackPoints.FirstOrDefault(t => t.Time != null)?.Time;
+                var end = TrackPoints.LastOrDefault(t => t.Time != null)?.Time;
                 ed.WriteMessage($"\nZona UTM actual: {SelectedUtmZone} seleccionada.");
                 ed.WriteMessage($"\nRuta importada: {TrackPoints.Count} puntos | Zona UTM {SelectedUtmZone} | Altitud: {(hasEle?"activada":"no disponible")} ");
                 ed.WriteMessage($"\nInicio: {start:HH:mm:ss} | Fin: {end:HH:mm:ss}");
@@ -81,7 +81,7 @@ namespace GPXVideoTools
             }
         }
 
-        public static void ShowMarkerDialog() { using(var f=new MarkerSettingsForm(MarkerSize, MarkerColor)){ if(f.ShowDialog()==DialogResult.OK){ MarkerSize=f.MarkerSize; MarkerColor=f.MarkerColor; _viewer?.ApplyMarkerStyle(MarkerSize, MarkerColor); } } }
+        // public static void ShowMarkerDialog() { using(var f=new MarkerSettingsForm(MarkerSize, MarkerColor)){ if(f.ShowDialog()==DialogResult.OK){ MarkerSize=f.MarkerSize; MarkerColor=f.MarkerColor; _viewer?.ApplyMarkerStyle(MarkerSize, MarkerColor); } } }
         public static void ShowRouteColorDialog() { using(var cd=new Forms.ColorDialog()){ cd.Color = RouteColor; if(cd.ShowDialog()== Forms.DialogResult.OK){ RouteColor = cd.Color; RibbonUI.UpdateRouteSwatch(RouteColor); UpdateRouteColorInDrawing(); } } }
         public static void ShowPlayPause() => _viewer?.PlayPause();
         public static void ShowPrev() => _viewer?.SeekBackward();

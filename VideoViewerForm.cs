@@ -1,17 +1,17 @@
 ﻿// GpxViewerForm.cs
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Runtime;
+using LibVLCSharp.Shared;
+using LibVLCSharp.WinForms;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using LibVLCSharp.Shared;
-using LibVLCSharp.WinForms;
-using Autodesk.AutoCAD.Geometry;
-using Autodesk.AutoCAD.ApplicationServices;
-using Autodesk.AutoCAD.DatabaseServices;
-using System.Drawing;
-
 using AutoCADApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using WinApp = System.Windows.Forms.Application;
 
@@ -26,6 +26,8 @@ namespace GPXVideoTools
         private Timer _syncTimer;
         private List<GpxPoint> _track;
         private ObjectId _markerId = ObjectId.Null;
+        public static string LastVideoPath { get; set; }
+
 
         public GpxViewerForm()
         {
@@ -73,13 +75,14 @@ namespace GPXVideoTools
             var bprev = new Button { Text = "< 5s", Width = 70 }; bprev.Click += (s, e) => SeekBackward();
             var bnext = new Button { Text = "> 5s", Width = 70 }; bnext.Click += (s, e) => SeekForward();
             var bauto = new Button { Text = "Sync ON/OFF", Width = 110 }; bauto.Click += (s, e) => ToggleAutoSync();
+            var bimport = new Button { Text = "Import", Width = 100 }; bimport.Click += (s, e) => ImportVideoFromDialog();
 
             // BOTONES DEBUG
             var bclear = new Button { Text = "Clear Log", Width = 90 }; bclear.Click += (s, e) => Logger.Clear();
             var bopen = new Button { Text = "Open Log", Width = 90 }; bopen.Click += (s, e) => Logger.OpenLogFile();
             var btest = new Button { Text = "TEST Marker", Width = 110 }; btest.Click += (s, e) => MoveMarkerTo(0);
 
-            pnl.Controls.AddRange(new Control[] { bplay, bprev, bnext, bauto, bclear, bopen, btest });
+            pnl.Controls.AddRange(new Control[] { bplay, bprev, bnext, bauto, bimport, bclear, bopen, btest });
             mainLayout.Controls.Add(pnl, 0, 1);
 
             // === GRID ===
@@ -149,24 +152,92 @@ namespace GPXVideoTools
             Logger.Log($"Grid poblado con {_track.Count} filas");
         }
 
+        // Función axiliar de videoImport
+        private static string GetFileSize(string filePath)
+        {
+            try
+            {
+                var info = new System.IO.FileInfo(filePath);
+                long bytes = info.Length;
+                string[] suffixes = { "B", "KB", "MB", "GB" };
+                int index = 0;
+                double size = bytes;
+                while (size >= 1024 && index < suffixes.Length - 1)
+                {
+                    size /= 1024;
+                    index++;
+                }
+                return $"{size:0.##} {suffixes[index]}";
+            }
+            catch
+            {
+                return "Desconocido";
+            }
+        }
+
+        private void ImportVideoFromDialog()
+        {
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            var ed = doc.Editor;
+
+            using (doc.LockDocument())
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Title = "Seleccionar video (.mp4 o .avi)";
+                ofd.Filter = "Videos (*.mp4;*.avi)|*.mp4;*.avi|MP4 (*.mp4)|*.mp4|AVI (*.avi)|*.avi";
+                ofd.FilterIndex = 1;
+
+                if (ofd.ShowDialog() != DialogResult.OK)
+                {
+                    ed.WriteMessage("\nCancelado.");
+                    return;
+                }
+
+                string path = ofd.FileName;
+                string ext = Path.GetExtension(path).ToLower();
+
+                if (ext != ".mp4" && ext != ".avi")
+                {
+                    ed.WriteMessage($"\nError: Solo .mp4 y .avi permitidos. ({ext})");
+                    return;
+                }
+
+                LastVideoPath = path;
+                ed.WriteMessage($"\nVideo cargado: {Path.GetFileName(path)}");
+                ed.WriteMessage($"\nTamaño: {GetFileSize(path)}");
+
+                LoadVideo(path);
+
+                this.Show();
+                this.BringToFront();
+                this.WindowState = FormWindowState.Normal;
+            }
+        }
+
+        // LoadVideo para cargar el video
         public void LoadVideo(string path)
         {
-            Logger.Log($"LoadVideo: {path}");
+            Logger.Log($"Cargando video: {path}");
+
             if (!File.Exists(path))
             {
-                Logger.Error("Archivo de video no encontrado", new FileNotFoundException(path));
+                Logger.Error("Video no encontrado", new FileNotFoundException(path));
+                MessageBox.Show("Video no encontrado:\n" + path, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             try
             {
+                _mediaPlayer.Stop();
+
                 var media = new Media(_libVLC, new Uri(path));
                 _mediaPlayer.Play(media);
-                Logger.Log("Video iniciado");
+                Logger.Log("Video reproducido correctamente");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 Logger.Error("Error al reproducir video", ex);
+                MessageBox.Show($"Error VLC:\n{ex.Message}", "Error de reproducción", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -193,7 +264,7 @@ namespace GPXVideoTools
                 _mediaPlayer.Play();
                 Logger.Log($"Seek a {secs:F2}s");
             }
-            catch (Exception ex)
+            catch (Autodesk.AutoCAD.Runtime.Exception ex)
             {
                 Logger.Error("Error en SeekSelectedRow", ex);
             }
@@ -231,95 +302,84 @@ namespace GPXVideoTools
             if (_syncTimer.Enabled)
             {
                 _syncTimer.Stop();
-                Logger.Log("AutoSync: DETENIDO");
+                Logger.Log("AutoSync: OFF");
             }
             else
             {
-                _syncTimer.Start();
-                Logger.Log("AutoSync: INICIADO");
+                if (_mediaPlayer.IsPlaying || (_track != null && _track.Count > 0))
+                {
+                    _syncTimer.Start();
+                    Logger.Log("AutoSync: ON");
+                }
+                else
+                {
+                    MessageBox.Show("Reproduce un video o carga un GPX para sincronizar.", "Sync", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
         }
 
         private void SyncTimer_Tick(object sender, EventArgs e)
         {
+            // Si no hay video reproduciéndose → salir
+            if (_mediaPlayer == null || !_mediaPlayer.IsPlaying)
+                return;
+
+            double videoTime = _mediaPlayer.Time / 1000.0;
+
+            // Si NO hay track → solo actualizar UI básica
             if (_track == null || _track.Count == 0)
             {
-                Logger.Log("SyncTimer_Tick: Track vacío");
+                Logger.Log($"Sync: Video={videoTime:F2}s (sin GPX)");
                 return;
             }
 
-            double curr = _mediaPlayer.Time / 1000.0;
+            // Hay track → sincronizar
             DateTime baseT = _track[0].Time;
-            int idx = 0;
-            double md = double.MaxValue;
+            int bestIdx = 0;
+            double minDiff = double.MaxValue;
 
             for (int i = 0; i < _track.Count; i++)
             {
-                double s = (_track[i].Time - baseT).TotalSeconds;
-                double d = Math.Abs(s - curr);
-                if (d < md) { md = d; idx = i; }
+                double gpxTime = (_track[i].Time - baseT).TotalSeconds;
+                double diff = Math.Abs(gpxTime - videoTime);
+                if (diff < minDiff)
+                {
+                    minDiff = diff;
+                    bestIdx = i;
+                }
             }
 
-            Logger.Log($"Sync: Video={curr:F2}s → GPX={(_track[idx].Time - baseT).TotalSeconds:F2}s (índice {idx})");
-
-            if (_grid.Rows.Count > idx)
+            // Actualizar grid
+            if (_grid.Rows.Count > bestIdx)
             {
                 _grid.ClearSelection();
-                _grid.Rows[idx].Selected = true;
-                _grid.FirstDisplayedScrollingRowIndex = idx;
+                _grid.Rows[bestIdx].Selected = true;
+                _grid.FirstDisplayedScrollingRowIndex = bestIdx;
             }
 
-            MoveMarkerTo(idx);
-            CenterViewOn(idx);
+            MoveMarkerTo(bestIdx);
+            CenterViewOn(bestIdx);
+
+            Logger.Log($"Sync OK: Video={videoTime:F2}s → GPX={bestIdx} ({minDiff:F3}s diff)");
         }
 
         private void CenterViewOn(int idx)
         {
             if (_track == null || idx >= _track.Count) return;
-
             var p = _track[idx];
+
             int zone; bool north;
             Utils.ParseZoneString(Commands.SelectedUtmZone, out zone, out north);
-            double e, n; int zu; bool nh;
-            Utils.LatLonToUtm(p.Lat, p.Lon, zone, north, out e, out n, out zu, out nh);
+            Utils.LatLonToUtm(p.Lat, p.Lon, zone, north, out double e, out double n, out _, out _);
 
-            var doc = AutoCADApp.DocumentManager.MdiActiveDocument;
-            if (doc == null)
-            {
-                Logger.Log("CenterViewOn: doc es NULL");
-                return;
-            }
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
 
-            // ESPERAR A QUE EL EDITOR ESTÉ LISTO
-            if (doc.Editor.IsQuiescent == false)
-            {
-                Logger.Log("Editor no está listo (IsQuiescent = false). Reintentando...");
-                // Reintentar en 100ms
-                var retryTimer = new System.Windows.Forms.Timer { Interval = 100 };
-                retryTimer.Tick += (s, ev) =>
-                {
-                    retryTimer.Stop();
-                    retryTimer.Dispose();
-                    CenterViewOn(idx); // Reintento
-                };
-                retryTimer.Start();
-                return;
-            }
-
-            using (doc.LockDocument())
-            {
-                try
-                {
-                    doc.Editor.CommandAsync($"_.ZOOM _C {e} {n} 0.0 50.0\n");
-                    Logger.Log($"Zoom centrado en UTM({e:F1}, {n:F1})");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("Zoom falló", ex);
-                }
-            }
+            // Método seguro y síncrono
+            doc.SendStringToExecute($"_.ZOOM _C {e:F2} {n:F2} 50 ", true, false, true);
+            Logger.Log($"Zoom centrado en: {e:F1}, {n:F1}");
         }
-
+        
         private void MoveMarkerTo(int idx)
         {
             Logger.Log($"MoveMarkerTo({idx}) iniciado");
@@ -439,7 +499,7 @@ namespace GPXVideoTools
                         tr.Commit();
                         Logger.Log("MoveMarkerTo: ÉXITO");
                     }
-                    catch (Exception ex)
+                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
                     {
                         Logger.Error("FALLÓ MoveMarkerTo", ex);
                     }

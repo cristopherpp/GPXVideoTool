@@ -76,7 +76,7 @@ namespace GPXVideoTools
                     .SendStringToExecute("GPX_IMPORT_CMD ", true, false, false))
             };
 
-            var play = new RibbonButton
+            /*var play = new RibbonButton
             {
                 Text = "Reproducir",
                 Size = RibbonItemSize.Standard,
@@ -101,7 +101,7 @@ namespace GPXVideoTools
                 ShowText = true,
                 ShowImage = true,
                 CommandHandler = new RelayCommand((_) => Commands.ShowNext())
-            };
+            };*/
 
             var sync = new RibbonButton
             {
@@ -112,14 +112,14 @@ namespace GPXVideoTools
                 CommandHandler = new RelayCommand((_) => Commands.ToggleAutoSync())
             };
 
-            var markerBtn = new RibbonButton 
+            /*var markerBtn = new RibbonButton 
             { 
                 Text = "Tamaño Marcador", 
                 Size = RibbonItemSize.Standard ,
                 ShowText = true,
                 ShowImage = true,
-                CommandHandler = new RelayCommand((_) => Commands.ToggleAutoSync())
-            };
+                CommandHandler = new RelayCommand((_) => Commands.ShowMarkerDialog())
+            };*/
 
             RouteColorButton = new RibbonButton
             {
@@ -133,8 +133,8 @@ namespace GPXVideoTools
 
             // Agregar filas al panel
             src.Items.Add(new RibbonRowPanel() { Items = { ZoneCombo, importBtn } });
-            src.Items.Add(new RibbonRowPanel() { Items = { prev, play, next, sync } });
-            src.Items.Add(new RibbonRowPanel() { Items = { markerBtn, RouteColorButton } });
+            src.Items.Add(new RibbonRowPanel() { Items = { sync } });
+            src.Items.Add(new RibbonRowPanel() { Items = { RouteColorButton } });
 
             if (!tab.Panels.Any(p => p.Source.Title == "GPX Tools"))
             {

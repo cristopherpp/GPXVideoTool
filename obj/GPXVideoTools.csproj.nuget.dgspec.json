@@ -1,25 +1,31 @@
 {
   "format": 1,
   "restore": {
-    "/home/cristopher/Downloads/GPXVideoTools_v1.0_libVLC (3)/GPXVideoTools_v1.0_libVLC/GPXVideoTools.csproj": {}
+    "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj": {}
   },
   "projects": {
-    "/home/cristopher/Downloads/GPXVideoTools_v1.0_libVLC (3)/GPXVideoTools_v1.0_libVLC/GPXVideoTools.csproj": {
+    "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/cristopher/Downloads/GPXVideoTools_v1.0_libVLC (3)/GPXVideoTools_v1.0_libVLC/GPXVideoTools.csproj",
+        "projectUniqueName": "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj",
         "projectName": "GPXVideoTools",
-        "projectPath": "/home/cristopher/Downloads/GPXVideoTools_v1.0_libVLC (3)/GPXVideoTools_v1.0_libVLC/GPXVideoTools.csproj",
-        "packagesPath": "/home/cristopher/.nuget/packages/",
-        "outputPath": "/home/cristopher/Downloads/GPXVideoTools_v1.0_libVLC (3)/GPXVideoTools_v1.0_libVLC/obj/",
+        "projectPath": "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj",
+        "packagesPath": "C:\\Users\\osmo1\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "/home/cristopher/.nuget/NuGet/NuGet.Config"
+          "C:\\Users\\osmo1\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net48"
         ],
         "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -52,18 +58,12 @@
               "target": "Package",
               "version": "[3.9.4, )"
             },
-            "Microsoft.NETFramework.ReferenceAssemblies": {
-              "suppressParent": "All",
-              "target": "Package",
-              "version": "[1.0.3, )",
-              "autoReferenced": true
-            },
             "VideoLAN.LibVLC.Windows": {
               "target": "Package",
               "version": "[3.0.21, )"
             }
           },
-          "runtimeIdentifierGraphPath": "/home/cristopher/.dotnet/sdk/9.0.306/RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.306\\RuntimeIdentifierGraph.json"
         }
       }
     }
