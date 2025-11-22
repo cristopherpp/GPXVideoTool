@@ -2,10 +2,10 @@
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup />
   <ItemGroup>
-    <Compile Update="MarkerSettingsForm.cs">
-      <SubType>Form</SubType>
+    <Compile Update="GpxViewerControl.cs">
+      <SubType>UserControl</SubType>
     </Compile>
-    <Compile Update="VideoViewerForm.cs">
+    <Compile Update="MarkerSettingsForm.cs">
       <SubType>Form</SubType>
     </Compile>
   </ItemGroup>

@@ -1,3 +1,4 @@
+using Autodesk.AutoCAD.Windows;
 using Autodesk.Windows;
 using System;
 using System.Drawing;
@@ -13,172 +14,149 @@ namespace GPXVideoTools
     {
         public static RibbonCombo ZoneCombo;
         public static RibbonButton RouteColorButton;
+        public static RibbonButton SyncButton;        // ← NUEVO
+        public static RibbonButton ShowPanelButton;   // ← NUEVO: abre el sidebar
+
         private static bool _ribbonCreated = false;
         private static bool _updatingZoneCombo = false;
 
         public static void CreateRibbon()
         {
-            if (_ribbonCreated) return; // con esto se evitan ventanas duplicadas
+            if (_ribbonCreated) return;
             _ribbonCreated = true;
 
             var ribbon = ComponentManager.Ribbon;
             if (ribbon == null) return;
 
-            var tab = ribbon.FindTab("GPXVideoTab");
-            if (tab == null)
+            var tab = ribbon.FindTab("GPXVideoTab") ?? new RibbonTab
             {
-                tab = new RibbonTab() { Title = "GPX Video", Id = "GPXVideoTab" };
+                Title = "GPX Video",
+                Id = "GPXVideoTab"
+            };
+
+            if (tab.Id == "GPXVideoTab" && !ribbon.Tabs.Contains(tab))
                 ribbon.Tabs.Add(tab);
-            }
 
-            if (tab.Panels.Count > 0) return;
+            if (tab.Panels.Any(p => p.Source?.Title == "GPX Tools")) return;
 
-            var src = new RibbonPanelSource() { Title = "GPX Tools" };
-            var panel = new RibbonPanel() { Source = src };
+            var src = new RibbonPanelSource { Title = "GPX Tools" };
+            var panel = new RibbonPanel { Source = src };
 
-            // Crear combo de zonas UTM
-            ZoneCombo = new RibbonCombo()
+            // === ZONA UTM ===
+            ZoneCombo = new RibbonCombo
             {
                 Text = Commands.SelectedUtmZone,
                 Size = RibbonItemSize.Standard
             };
-
             for (int i = 1; i <= 60; i++) ZoneCombo.Items.Add(new RibbonTextBox { Text = i + "N" });
             for (int i = 1; i <= 60; i++) ZoneCombo.Items.Add(new RibbonTextBox { Text = i + "S" });
-            ZoneCombo.Text = Commands.SelectedUtmZone;
+            ZoneCombo.CurrentChanged += ZoneCombo_CurrentChanged;
 
-            // CAMBIO: antes era ItemChanged → ahora CurrentChanged
-            ZoneCombo.CurrentChanged += (s, e) =>
-            {
-                if (_updatingZoneCombo) return;
-                try
-                {
-                    _updatingZoneCombo = true;
-                    Commands.SelectedUtmZone = ZoneCombo.Text;
-                    var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
-                    doc?.Editor.WriteMessage($"\nZona UTM actual: {Commands.SelectedUtmZone} seleccionada.");
-                }
-                finally
-                {
-                    _updatingZoneCombo = false;
-                }
-            };
+            // === BOTONES ===
+            var importBtn = CreateButton("Importar GPX", "GPX_IMPORT_CMD ", large: true);
+            ShowPanelButton = CreateButton("Mostrar Panel", () => GpxPalette.Show(), large: true, "Abrir panel lateral con video + tabla");
+            SyncButton = CreateButton("Sync ON/OFF", () => Commands.ToggleAutoSync(), large: false);
+            RouteColorButton = CreateButton("Color Ruta", () => Commands.ShowRouteColorDialog(), large: false);
 
-            // Botones
-            var importBtn = new RibbonButton()
-            {
-                Text = "Importar GPX",
-                Size = RibbonItemSize.Large,
-                ShowText = true,
-                ShowImage = true,
-                CommandHandler = new RelayCommand((_) =>
-                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument
-                    .SendStringToExecute("GPX_IMPORT_CMD ", true, false, false))
-            };
-
-            /*var play = new RibbonButton
-            {
-                Text = "Reproducir",
-                Size = RibbonItemSize.Standard,
-                ShowText = true,
-                ShowImage = true,
-                CommandHandler = new RelayCommand((_) => Commands.ShowPlayPause())
-            };
-
-            var prev = new RibbonButton
-            {
-                Text = "Previo",
-                Size = RibbonItemSize.Standard,
-                ShowText = true,
-                ShowImage = true,
-                CommandHandler = new RelayCommand((_) => Commands.ShowPrev())
-            };
-
-            var next = new RibbonButton
-            {
-                Text = "Siguiente",
-                Size = RibbonItemSize.Standard,
-                ShowText = true,
-                ShowImage = true,
-                CommandHandler = new RelayCommand((_) => Commands.ShowNext())
-            };*/
-
-            var sync = new RibbonButton
-            {
-                Text = "Syncronizar",
-                Size = RibbonItemSize.Standard,
-                ShowText = true,
-                ShowImage = true,
-                CommandHandler = new RelayCommand((_) => Commands.ToggleAutoSync())
-            };
-
-            /*var markerBtn = new RibbonButton 
-            { 
-                Text = "Tamaño Marcador", 
-                Size = RibbonItemSize.Standard ,
-                ShowText = true,
-                ShowImage = true,
-                CommandHandler = new RelayCommand((_) => Commands.ShowMarkerDialog())
-            };*/
-
-            RouteColorButton = new RibbonButton
-            {
-                Text = "Color Ruta GPX",
-                Size = RibbonItemSize.Standard,
-                ShowImage = true,
-                ShowText = true,
-                CommandHandler = new RelayCommand((_) => Commands.ShowRouteColorDialog())
-            };
             UpdateRouteSwatch(Commands.RouteColor);
 
-            // Agregar filas al panel
-            src.Items.Add(new RibbonRowPanel() { Items = { ZoneCombo, importBtn } });
-            src.Items.Add(new RibbonRowPanel() { Items = { sync } });
-            src.Items.Add(new RibbonRowPanel() { Items = { RouteColorButton } });
+            // === LAYOUT ===
+            src.Items.Add(new RibbonRowPanel { Items = { ZoneCombo } });
+            src.Items.Add(new RibbonRowPanel { Items = { importBtn, ShowPanelButton } });
+            src.Items.Add(new RibbonRowPanel { Items = { SyncButton, RouteColorButton } });
 
-            if (!tab.Panels.Any(p => p.Source.Title == "GPX Tools"))
+            tab.Panels.Add(panel);
+            tab.IsActive = true;
+        }
+
+        private static RibbonButton CreateButton(string text, Action action, bool large = false, string tooltip = "")
+        {
+            return new RibbonButton
             {
-                tab.Panels.Add(panel);
-            }
+                Text = text,
+                ShowText = true,
+                ShowImage = true,
+                Size = large ? RibbonItemSize.Large : RibbonItemSize.Standard,
+                LargeImage = GetIcon(text),
+                CommandHandler = new RelayCommand(_ => action())
+            };
         }
 
-        public static void UpdateRouteSwatch(System.Drawing.Color c)
+        private static RibbonButton CreateButton(string text, string command, bool large = false, string tooltip = "")
         {
-            RouteColorButton.LargeImage = BitmapToImageSource(CreateSwatch(c)); // Convertir Bitmap a ImageSource
-            RouteColorButton.ToolTip = $"Ruta color: RGB({c.R},{c.G},{c.B})";
+            var btn = new RibbonButton
+            {
+                Text = text,
+                ShowText = true,
+                ShowImage = true,
+                Size = large ? RibbonItemSize.Large : RibbonItemSize.Standard,
+                LargeImage = GetIcon(text),
+                CommandHandler = new RelayCommand(_ =>
+                    Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument
+                        .SendStringToExecute(command + " ", true, false, false))
+            };
+            if (!string.IsNullOrEmpty(tooltip)) btn.ToolTip = tooltip;
+            return btn;
         }
 
-        private static Bitmap CreateSwatch(System.Drawing.Color c)
+        private static ImageSource GetIcon(string name)
         {
-            var bmp = new Bitmap(16, 16);
+            // Puedes cargar .png reales aquí después
+            return BitmapToImageSource(CreateIconBitmap(name));
+        }
+
+        private static Bitmap CreateIconBitmap(string text)
+        {
+            var bmp = new Bitmap(32, 32);
             using (var g = Graphics.FromImage(bmp))
             {
-                using (var b = new SolidBrush(c))
-                    g.FillRectangle(b, 0, 0, 16, 16);
-                g.DrawRectangle(Pens.Black, 0, 0, 15, 15);
+                g.Clear(System.Drawing.Color.Transparent);
+                g.DrawString(text.Substring(0, 1), new Font("Arial", 14, FontStyle.Bold), System.Drawing.Brushes.White, 4, 4);
             }
             return bmp;
         }
 
-        // Conversión de Bitmap → ImageSource (requerido para AutoCAD 2024)
-        private static ImageSource BitmapToImageSource(Bitmap bitmap)
+        private static void ZoneCombo_CurrentChanged(object sender, EventArgs e)
         {
-            IntPtr hBitmap = bitmap.GetHbitmap();
+            if (_updatingZoneCombo || ZoneCombo.Current == null) return;
+            _updatingZoneCombo = true;
             try
             {
-                return Imaging.CreateBitmapSourceFromHBitmap(
-                    hBitmap,
-                    IntPtr.Zero,
-                    System.Windows.Int32Rect.Empty,
-                    BitmapSizeOptions.FromEmptyOptions());
+                Commands.SelectedUtmZone = ZoneCombo.Text;
+                var ed = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Editor;
+                ed?.WriteMessage($"\nZona UTM: {Commands.SelectedUtmZone}");
             }
-            finally
+            finally { _updatingZoneCombo = false; }
+        }
+
+        public static void UpdateRouteSwatch(System.Drawing.Color c)
+        {
+            if (RouteColorButton != null)
             {
-                DeleteObject(hBitmap);
+                RouteColorButton.LargeImage = BitmapToImageSource(CreateSwatch(c));
+                RouteColorButton.ToolTip = $"Color Ruta: RGB({c.R},{c.G},{c.B})";
             }
         }
 
-        [DllImport("gdi32.dll")]
-        private static extern bool DeleteObject(IntPtr hObject);
+        private static Bitmap CreateSwatch(System.Drawing.Color c)
+        {
+            var bmp = new Bitmap(32, 32);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                using (var b = new SolidBrush(c)) g.FillRectangle(b, 2, 2, 28, 28);
+                g.DrawRectangle(Pens.Black, 2, 2, 27, 27);
+            }
+            return bmp;
+        }
+
+        private static ImageSource BitmapToImageSource(Bitmap bmp)
+        {
+            IntPtr h = bmp.GetHbitmap();
+            try { return Imaging.CreateBitmapSourceFromHBitmap(h, IntPtr.Zero, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions()); }
+            finally { DeleteObject(h); }
+        }
+
+        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
     }
 }
+//System.Drawing.Color

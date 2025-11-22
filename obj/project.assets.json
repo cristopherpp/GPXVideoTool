@@ -2051,23 +2051,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\osmo1\\.nuget\\packages\\": {},
+    "C:\\Users\\crpereze\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj",
+      "projectUniqueName": "C:\\Users\\crpereze\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj",
       "projectName": "GPXVideoTools",
-      "projectPath": "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj",
-      "packagesPath": "C:\\Users\\osmo1\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\osmo1\\Source\\Repos\\GPXVideoTool\\obj\\",
+      "projectPath": "C:\\Users\\crpereze\\Source\\Repos\\GPXVideoTool\\GPXVideoTools.csproj",
+      "packagesPath": "C:\\Users\\crpereze\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\crpereze\\Source\\Repos\\GPXVideoTool\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\osmo1\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\crpereze\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],

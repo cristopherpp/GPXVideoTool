@@ -1,39 +1,34 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Xml.Linq;
+using System.Xml;
 
 namespace GPXVideoTools
 {
-    public class GpxPoint
-    {
-        public double Lat { get; set; }
-        public double Lon { get; set; }
-        public double? Ele { get; set; }
-        public DateTime Time { get; set; }
-        public GpxPoint(double lat, double lon, DateTime time, double? ele = null) { Lat = lat; Lon = lon; Time = time; Ele = ele; }
-    }
-
     public static class GpxParser
     {
-        public static List<GpxPoint> Parse(string path)
+        public static System.Collections.Generic.List<GPXVideoTools.GpxPoint> Parse(string filePath)
         {
-            var list = new List<GpxPoint>();
-            var doc = XDocument.Load(path);
-            XNamespace ns = doc.Root.GetDefaultNamespace();
-            var trkpts = doc.Descendants(ns + "trkpt");
-            if (!trkpts.Any()) trkpts = doc.Descendants("trkpt");
-
-            foreach (var n in trkpts)
+            var points = new System.Collections.Generic.List<GPXVideoTools.GpxPoint>();
+            var xml = new System.Xml.XmlDocument();
+            xml.Load(filePath);
+            var ns = new System.Xml.XmlNamespaceManager(xml.NameTable);
+            ns.AddNamespace("gpx", "http://www.topografix.com/GPX/1/1");
+            var nodes = xml.SelectNodes("//gpx:trkpt", ns);
+            if (nodes == null) return points;
+            foreach (System.Xml.XmlNode node in nodes)
             {
-                double lat = double.Parse(n.Attribute("lat").Value, CultureInfo.InvariantCulture);
-                double lon = double.Parse(n.Attribute("lon").Value, CultureInfo.InvariantCulture);
-                double? ele = null; var eleN = n.Element(ns + "ele") ?? n.Element("ele"); if (eleN != null) ele = double.Parse(eleN.Value, CultureInfo.InvariantCulture);
-                DateTime t = DateTime.MinValue; var timeN = n.Element(ns + "time") ?? n.Element("time"); if (timeN != null) DateTime.TryParse(timeN.Value, null, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out t);
-                list.Add(new GpxPoint(lat, lon, t, ele));
+                var p = new GPXVideoTools.GpxPoint
+                {
+                    Lat = double.Parse(node.Attributes["lat"].Value),
+                    Lon = double.Parse(node.Attributes["lon"].Value),
+                };
+                var eleNode = node.SelectSingleNode("gpx:ele", ns);
+                if (eleNode != null) p.Ele = double.Parse(eleNode.InnerText);
+                var timeNode = node.SelectSingleNode("gpx:time", ns);
+                if (timeNode != null) p.Time = System.DateTime.Parse(timeNode.InnerText);
+                points.Add(p);
             }
-            return list;
+            return points;
         }
     }
 }
