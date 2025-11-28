@@ -227,9 +227,19 @@ namespace GPXVideoTools
             }
             try
             {
-                _mediaPlayer.Stop();
-                var media = new Media(_libVLC, new Uri(path));
-                _mediaPlayer.Play(media);
+                if (_mediaPlayer.IsPlaying)
+                {
+                    _mediaPlayer.Stop();
+                }
+
+                using (var media = new Media(_libVLC, new Uri(path)))
+                {
+                    _mediaPlayer.Media = media;
+                }
+
+                _mediaPlayer.Play();
+
+                _mediaPlayer.SetPause(true);
                 Logger.Log("Video reproducido correctamente");
             }
             catch (System.Exception ex)
@@ -352,12 +362,12 @@ namespace GPXVideoTools
             }
 
             MoveMarkerTo(bestIdx);
-            CenterViewOn(bestIdx);
+            // CenterViewOn(bestIdx);
             Logger.Log($"Sync OK: Video={videoTime:F2}s → GPX={bestIdx} ({minDiff:F3}s diff)");
         }
 
         // CORRECCIÓN: Seguimiento suave SIN regeneración, SIN zoom fijo, SIN comandos
-        private void CenterViewOn(int idx)
+        /* private void CenterViewOn(int idx)
         {
             if (!_isSyncActive || _track == null || idx >= _track.Count) return;
 
@@ -366,7 +376,7 @@ namespace GPXVideoTools
             Utils.ParseZoneString(Commands.SelectedUtmZone, out zone, out north);
 
             Utils.LatLonToUtm(p.Lat, p.Lon, zone, north, out double e, out double n, out _, out _);
-            Point2d target = new Point2d(e, n);
+            //Point2d target = new Point2d(e, n);
 
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
@@ -402,7 +412,7 @@ namespace GPXVideoTools
                 Logger.Log($"Vista centrada en: {e:F1}, {n:F1}");
                 tr.Commit();
             }
-        }
+        } */
 
         private void MoveMarkerTo(int idx)
         {
