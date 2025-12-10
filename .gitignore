@@ -1,10 +1,18 @@
-/bin
-./bin
-./obj
-./.vs
-./.idea. v s /  
- . v s /  
- . v s /  
-.vs/
+# --- Build Output (The most important part) ---
+[Bb]in/
+[Oo]bj/
 
- 
+# --- Visual Studio / Editor Files ---
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# --- AutoCAD Temporary Files (Critical for your startup) ---
+# You don't want to track backup files or lock files
+*.bak
+*.dwl
+*.dwl2
+*.plot.log
