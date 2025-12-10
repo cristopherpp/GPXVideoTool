@@ -1,6 +1,6 @@
 is_global = true
 build_property.RootNamespace = GPXVideoTools
-build_property.ProjectDir = C:\Users\crpereze\Source\Repos\GPXVideoTool\
+build_property.ProjectDir = C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.CsWinRTUseWindowsUIXamlProjections = false

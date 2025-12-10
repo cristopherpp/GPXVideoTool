@@ -5,12 +5,17 @@
     <RestoreTool Condition=" '$(RestoreTool)' == '' ">NuGet</RestoreTool>
     <ProjectAssetsFile Condition=" '$(ProjectAssetsFile)' == '' ">$(MSBuildThisFileDirectory)project.assets.json</ProjectAssetsFile>
     <NuGetPackageRoot Condition=" '$(NuGetPackageRoot)' == '' ">$(UserProfile)\.nuget\packages\</NuGetPackageRoot>
-    <NuGetPackageFolders Condition=" '$(NuGetPackageFolders)' == '' ">C:\Users\crpereze\.nuget\packages\;C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages</NuGetPackageFolders>
+    <NuGetPackageFolders Condition=" '$(NuGetPackageFolders)' == '' ">C:\Users\crist\.nuget\packages\;C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages</NuGetPackageFolders>
     <NuGetProjectStyle Condition=" '$(NuGetProjectStyle)' == '' ">PackageReference</NuGetProjectStyle>
-    <NuGetToolVersion Condition=" '$(NuGetToolVersion)' == '' ">6.14.1</NuGetToolVersion>
+    <NuGetToolVersion Condition=" '$(NuGetToolVersion)' == '' ">7.0.0</NuGetToolVersion>
   </PropertyGroup>
   <ItemGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
-    <SourceRoot Include="C:\Users\crpereze\.nuget\packages\" />
+    <SourceRoot Include="C:\Users\crist\.nuget\packages\" />
     <SourceRoot Include="C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages\" />
   </ItemGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net48' AND '$(ExcludeRestorePackageImports)' != 'true' ">
+    <PkgAutoCAD_NET_Model Condition=" '$(PkgAutoCAD_NET_Model)' == '' ">C:\Users\crist\.nuget\packages\autocad.net.model\24.0.0</PkgAutoCAD_NET_Model>
+    <PkgAutoCAD_NET_Core Condition=" '$(PkgAutoCAD_NET_Core)' == '' ">C:\Users\crist\.nuget\packages\autocad.net.core\24.0.0</PkgAutoCAD_NET_Core>
+    <PkgAutoCAD_NET Condition=" '$(PkgAutoCAD_NET)' == '' ">C:\Users\crist\.nuget\packages\autocad.net\24.0.0</PkgAutoCAD_NET>
+  </PropertyGroup>
 </Project>

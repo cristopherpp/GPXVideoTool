@@ -1,3 +1,5 @@
+using System.Reflection;
+
 using Autodesk.AutoCAD.Windows;
 using Autodesk.Windows;
 using System;
@@ -14,8 +16,8 @@ namespace GPXVideoTools
     {
         public static RibbonCombo ZoneCombo;
         public static RibbonButton RouteColorButton;
-        public static RibbonButton SyncButton;        // ← NUEVO
-        public static RibbonButton ShowPanelButton;   // ← NUEVO: abre el sidebar
+        public static RibbonButton SyncButton;
+        public static RibbonButton ShowPanelButton;
 
         private static bool _ribbonCreated = false;
         private static bool _updatingZoneCombo = false;
@@ -42,33 +44,20 @@ namespace GPXVideoTools
             var src = new RibbonPanelSource { Title = "GPX Tools" };
             var panel = new RibbonPanel { Source = src };
 
-            // === ZONA UTM ===
-            ZoneCombo = new RibbonCombo
-            {
-                Text = Commands.SelectedUtmZone,
-                Size = RibbonItemSize.Standard
-            };
-            for (int i = 1; i <= 60; i++) ZoneCombo.Items.Add(new RibbonTextBox { Text = i + "N" });
-            for (int i = 1; i <= 60; i++) ZoneCombo.Items.Add(new RibbonTextBox { Text = i + "S" });
-            ZoneCombo.CurrentChanged += ZoneCombo_CurrentChanged;
-
             // === BOTONES ===
-            var importBtn = CreateButton("Importar GPX", "GPX_IMPORT_CMD ", large: true);
-            ShowPanelButton = CreateButton("Mostrar Panel", () => GpxPalette.Show(), large: true, "Abrir panel lateral con video + tabla");
+            var ShowPanelButton = CreateButton("Mostrar Panel", () => GpxPalette.Show(), large: true, "Abrir panel lateral con video + tabla");
             SyncButton = CreateButton("Sync ON/OFF", () => Commands.ToggleAutoSync(), large: false);
             RouteColorButton = CreateButton("Color Ruta", () => Commands.ShowRouteColorDialog(), large: false);
 
             UpdateRouteSwatch(Commands.RouteColor);
 
-            // === LAYOUT ===
-            src.Items.Add(new RibbonRowPanel { Items = { ZoneCombo } });
-            src.Items.Add(new RibbonRowPanel { Items = { importBtn, ShowPanelButton } });
+            src.Items.Add(new RibbonRowPanel { Items = { ShowPanelButton } });
             src.Items.Add(new RibbonRowPanel { Items = { SyncButton, RouteColorButton } });
 
             tab.Panels.Add(panel);
             tab.IsActive = true;
         }
-
+        
         private static RibbonButton CreateButton(string text, Action action, bool large = false, string tooltip = "")
         {
             return new RibbonButton
@@ -159,4 +148,3 @@ namespace GPXVideoTools
         [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
     }
 }
-//System.Drawing.Color

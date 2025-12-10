@@ -1308,3 +1308,9 @@ C:\Users\crpereze\source\repos\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.
 C:\Users\crpereze\source\repos\GPXVideoTool\obj\x64\Release\net48\GPXVideo.B159EC14.Up2Date
 C:\Users\crpereze\source\repos\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.dll
 C:\Users\crpereze\source\repos\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.pdb
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.csproj.AssemblyReference.cache
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.csproj.CoreCompileInputs.cache
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.sourcelink.json
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.dll
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\x64\Release\net48\GPXVideoTools.pdb

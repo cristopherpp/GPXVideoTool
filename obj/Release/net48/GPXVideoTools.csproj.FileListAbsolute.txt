@@ -1,3 +1,7 @@
 C:\Users\osmo1\Downloads\GPXVideoTools_v1.0_libVLC\obj\Release\net48\GPXVideoTools.csproj.AssemblyReference.cache
 C:\Users\osmo1\Downloads\GPXVideoTools_v1.0_libVLC\obj\Release\net48\GPXVideoTools.GeneratedMSBuildEditorConfig.editorconfig
 C:\Users\osmo1\Downloads\GPXVideoTools_v1.0_libVLC\obj\Release\net48\GPXVideoTools.csproj.CoreCompileInputs.cache
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\Release\net48\GPXVideoTools.csproj.AssemblyReference.cache
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\Release\net48\GPXVideoTools.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\Release\net48\GPXVideoTools.csproj.CoreCompileInputs.cache
+C:\Users\crist\source\repos\cristopherpp\GPXVideoTool\obj\Release\net48\GPXVideoTools.sourcelink.json

@@ -61,8 +61,6 @@ namespace GPXVideoTools
 
                 DrawPolyline(utm);
 
-                ed.WriteMessage($"\nRuta importada: {TrackPoints.Count} puntos | Zona {SelectedUtmZone}");
-
                 // === AQUÍ ESTÁ LA MAGIA: Abre el panel nativo y carga datos ===
                 GpxPalette.Show();
                 GpxPalette.SetTrack(TrackPoints);
