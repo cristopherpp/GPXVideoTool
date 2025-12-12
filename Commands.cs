@@ -34,10 +34,10 @@ namespace GPXVideoTools
             GpxPalette.Show();
         }
 
-        [CommandMethod("GPX_IMPORT_CMD")]
         public static void ImportAndOpen()
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return; // Safety check
             var ed = doc.Editor;
 
             using (var ofd = new OpenFileDialog { Filter = "GPX files (*.gpx)|*.gpx" })
@@ -59,9 +59,13 @@ namespace GPXVideoTools
                     utm.Add(new Point3d(e, n, p.Ele ?? 0.0));
                 }
 
-                DrawPolyline(utm);
+                // CRITICAL: Lock the document before drawing!
+                using (doc.LockDocument())
+                {
+                    DrawPolyline(utm);
+                }
 
-                // === AQUÍ ESTÁ LA MAGIA: Abre el panel nativo y carga datos ===
+                // Update the Palette UI
                 GpxPalette.Show();
                 GpxPalette.SetTrack(TrackPoints);
             }

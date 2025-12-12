@@ -56,74 +56,88 @@ namespace GPXVideoTools
                 ColumnCount = 1,
                 Padding = new Padding(5)
             };
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 55));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45F));
+
+            // --- SMART RESPONSIVE LAYOUT ---
+            // Row 0: Video (Takes 70% of the *remaining* space after buttons)
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70F));
+
+            // Row 1: Buttons (AutoSize - This is the key to responsiveness!)
+            // It will shrink to 35px if buttons are in 1 line, or grow to 70px if they wrap to 2 lines.
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            // Row 2: Grid (Takes 30% of the *remaining* space)
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));
+
             this.Controls.Add(layout);
 
-            // Video
+            // 1. Video View
             _videoView = new VideoView { Dock = DockStyle.Fill, BackColor = Color.Black };
             layout.Controls.Add(_videoView, 0, 0);
 
-            // Botones
+            // 2. Button Panel
             var btnPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight,
-                AutoSize = true,
-                Padding = new Padding(2)
+                AutoSize = true,             // <--- CRITICAL for responsiveness
+                AutoSizeMode = AutoSizeMode.GrowAndShrink, // Allows the row to collapse/expand
+                Padding = new Padding(0),
+                Margin = new Padding(0)
             };
 
-            var buttons = new[]
+            // Use the modern tuple syntax for cleaner code
+            var buttons = new (string, Action)[]
             {
-                ("Play/Pause", (Action)PlayPause),
+                ("Import GPX", () => Commands.ImportAndOpen()),
+                ("Import Video", ImportVideoFromDialog),
+                ("Play/Pause", PlayPause),
                 ("< 5s", SeekBackward),
                 ("> 5s", SeekForward),
                 ("Sync ON/OFF", ToggleAutoSync),
-                ("Import Video", ImportVideoFromDialog),
-                ("Clear Log", () => Logger.Clear()),
-                ("Open Log", () => Logger.OpenLogFile()),
-                ("TEST Marker", () => MoveMarkerTo(0))
             };
 
             foreach (var (text, action) in buttons)
             {
-                var btn = new Button { Text = text, Width = 100, Height = 30, Margin = new Padding(3) };
+                var btn = new Button
+                {
+                    Text = text,
+                    Width = 90,        // Slightly smaller width to fit more on one line
+                    Height = 30,
+                    Margin = new Padding(2),
+                    Cursor = Cursors.Hand
+                };
                 btn.Click += (s, e) => action();
                 btnPanel.Controls.Add(btn);
             }
             layout.Controls.Add(btnPanel, 0, 1);
 
-            // Grid
+            // 3. Grid
             _grid = new DataGridView
             {
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                AllowUserToResizeRows = false
+                AllowUserToResizeRows = false,
+                BackgroundColor = SystemColors.ControlLight, // Looks cleaner
+                BorderStyle = BorderStyle.None
             };
             _grid.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) SeekSelectedRow(); };
             layout.Controls.Add(_grid, 0, 2);
 
-            // Timer
+            // Timer setup remains the same
             _syncTimer = new Timer { Interval = SYNC_INTERVAL_MS };
             _syncTimer.Tick += SyncTimer_Tick;
-
-            Logger.EnableFileLog = true;
-            Logger.Log("GpxViewerControl creado correctamente");
         }
 
         public void SetTrack(List<GpxPoint> t)
         {
-            Logger.Log($"SetTrack llamado con {t?.Count ?? 0} puntos");
             _track = t;
             PopulateGrid();
         }
 
         private void PopulateGrid()
         {
-            Logger.Log("PopulateGrid iniciado");
             var tbl = new System.Data.DataTable();
             tbl.Columns.Add("Idx", typeof(int));
             tbl.Columns.Add("Lat", typeof(double));
@@ -133,12 +147,10 @@ namespace GPXVideoTools
             tbl.Columns.Add("Seconds", typeof(double));
             if (_track == null || _track.Count == 0)
             {
-                Logger.Log("Track vacío → grid vacío");
                 _grid.DataSource = tbl;
                 return;
             }
             DateTime baseT = _track[0].Time;
-            Logger.Log($"BaseTime: {baseT:o}");
             for (int i = 0; i < _track.Count; i++)
             {
                 var p = _track[i];
@@ -153,7 +165,6 @@ namespace GPXVideoTools
                 tbl.Rows.Add(r);
             }
             _grid.DataSource = tbl;
-            Logger.Log($"Grid poblado con {_track.Count} filas");
         }
 
         private static string GetFileSize(string filePath)
@@ -218,10 +229,8 @@ namespace GPXVideoTools
 
         public void LoadVideo(string path)
         {
-            Logger.Log($"Cargando video: {path}");
             if (!File.Exists(path))
             {
-                Logger.Error("Video no encontrado", new FileNotFoundException(path));
                 MessageBox.Show("Video no encontrado:\n" + path, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
@@ -240,18 +249,15 @@ namespace GPXVideoTools
                 _mediaPlayer.Play();
 
                 _mediaPlayer.SetPause(true);
-                Logger.Log("Video reproducido correctamente");
             }
             catch (System.Exception ex)
             {
-                Logger.Error("Error al reproducir video", ex);
                 MessageBox.Show($"Error VLC:\n{ex.Message}", "Error de reproducción", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         public void ApplyMarkerStyle(double size, Color color)
         {
-            Logger.Log($"ApplyMarkerStyle: size={size}, color={color}");
             Commands.MarkerSize = size;
             Commands.MarkerColor = color;
             this.Invalidate();
@@ -261,7 +267,6 @@ namespace GPXVideoTools
         {
             if (_grid.SelectedRows.Count == 0)
             {
-                Logger.Log("SeekSelectedRow: Ninguna fila seleccionada");
                 return;
             }
             try
@@ -269,11 +274,10 @@ namespace GPXVideoTools
                 double secs = Convert.ToDouble(_grid.SelectedRows[0].Cells["Seconds"].Value);
                 _mediaPlayer.Time = (long)(secs * 1000);
                 _mediaPlayer.Play();
-                Logger.Log($"Seek a {secs:F2}s");
             }
             catch (Autodesk.AutoCAD.Runtime.Exception ex)
             {
-                Logger.Error("Error en SeekSelectedRow", ex);
+                // ToDo fix this catch
             }
         }
 
@@ -282,12 +286,10 @@ namespace GPXVideoTools
             if (_mediaPlayer.IsPlaying)
             {
                 _mediaPlayer.Pause();
-                Logger.Log("Pausado");
             }
             else
             {
                 _mediaPlayer.Play();
-                Logger.Log("Reproduciendo");
             }
         }
 
@@ -295,13 +297,11 @@ namespace GPXVideoTools
         {
             long t = Math.Max(0, _mediaPlayer.Time - 5000);
             _mediaPlayer.Time = t;
-            Logger.Log($"Retrocedió 5s → {t / 1000.0}s");
         }
 
         public void SeekForward()
         {
             _mediaPlayer.Time += 5000;
-            Logger.Log($"Avanzó 5s → {_mediaPlayer.Time / 1000.0}s");
         }
 
         public void ToggleAutoSync()
@@ -310,7 +310,6 @@ namespace GPXVideoTools
             {
                 _syncTimer.Stop();
                 _isSyncActive = false;
-                Logger.Log("AutoSync: OFF");
             }
             else
             {
@@ -318,7 +317,6 @@ namespace GPXVideoTools
                 {
                     _syncTimer.Start();
                     _isSyncActive = true;
-                    Logger.Log("AutoSync: ON");
                 }
                 else
                 {
@@ -336,7 +334,6 @@ namespace GPXVideoTools
 
             if (_track == null || _track.Count == 0)
             {
-                Logger.Log($"Sync: Video={videoTime:F2}s (sin GPX)");
                 return;
             }
 
@@ -363,7 +360,6 @@ namespace GPXVideoTools
 
             MoveMarkerTo(bestIdx);
             // CenterViewOn(bestIdx);
-            Logger.Log($"Sync OK: Video={videoTime:F2}s → GPX={bestIdx} ({minDiff:F3}s diff)");
         }
 
         // CORRECCIÓN: Seguimiento suave SIN regeneración, SIN zoom fijo, SIN comandos
@@ -416,10 +412,8 @@ namespace GPXVideoTools
 
         private void MoveMarkerTo(int idx)
         {
-            Logger.Log($"MoveMarkerTo({idx}) iniciado");
             if (!_isSyncActive || _track == null || idx < 0 || idx >= _track.Count)
             {
-                Logger.Log("Índice inválido o sync inactivo");
                 return;
             }
             var p = _track[idx];
@@ -441,12 +435,10 @@ namespace GPXVideoTools
                 Utils.LatLonToUtm(_track[idx - 1].Lat, _track[idx - 1].Lon, zone, north, out e2, out n2, out zu, out nh);
                 ang = Math.Atan2(n - n2, e - e2);
             }
-            Logger.Log($"Marker: UTM({e:F1}, {n:F1}), Z={z:F1}, Ang={ang * 180 / Math.PI:F1}°");
 
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             if (doc == null)
             {
-                Logger.Log("doc es NULL → no hay documento activo");
                 return;
             }
 
@@ -462,7 +454,6 @@ namespace GPXVideoTools
                         ObjectId markerBlockId;
                         if (!bt.Has("GPX_MARKER"))
                         {
-                            Logger.Log("Creando bloque GPX_MARKER...");
                             var btr = new BlockTableRecord { Name = "GPX_MARKER" };
                             var shaft = new Polyline();
                             shaft.AddVertexAt(0, new Point2d(-0.5, 0), 0, 0, 0);
@@ -479,12 +470,10 @@ namespace GPXVideoTools
                             bt.UpgradeOpen();
                             markerBlockId = bt.Add(btr);
                             tr.AddNewlyCreatedDBObject(btr, true);
-                            Logger.Log("Bloque GPX_MARKER creado");
                         }
                         else
                         {
                             markerBlockId = bt["GPX_MARKER"];
-                            Logger.Log("Bloque GPX_MARKER ya existe");
                         }
 
                         BlockReference existingRef = null;
@@ -504,7 +493,6 @@ namespace GPXVideoTools
 
                         if (existingRef == null || existingRef.IsErased)
                         {
-                            Logger.Log("Creando nueva referencia de marcador");
                             var newBr = new BlockReference(new Point3d(e, n, z), markerBlockId);
                             newBr.ScaleFactors = new Scale3d(Commands.MarkerSize);
                             ms.AppendEntity(newBr);
@@ -513,7 +501,6 @@ namespace GPXVideoTools
                         }
                         else
                         {
-                            Logger.Log("Actualizando marcador existente");
                             var brToModify = (BlockReference)tr.GetObject(existingRef.ObjectId, OpenMode.ForWrite);
                             brToModify.Position = new Point3d(e, n, z);
                             brToModify.Rotation = ang;
@@ -522,11 +509,10 @@ namespace GPXVideoTools
                         }
 
                         tr.Commit();
-                        Logger.Log("MoveMarkerTo: ÉXITO");
                     }
                     catch (Autodesk.AutoCAD.Runtime.Exception ex)
                     {
-                        Logger.Error("FALLÓ MoveMarkerTo", ex);
+                        // ToDo fix this catch
                     }
                 }
             }
