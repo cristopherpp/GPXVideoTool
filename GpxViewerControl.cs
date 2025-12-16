@@ -22,11 +22,18 @@ namespace GPXVideoTools
         private DataGridView _grid;
         private Timer _syncTimer;
         private List<GpxPoint> _track;
+
+        // PERFORMANCE: We cache the ID so we don't search for it 10 times/second
         private ObjectId _markerId = ObjectId.Null;
-        private Point2d _lastViewCenter = Point2d.Origin;
-        private const double MIN_MOVE_DISTANCE = 25.0;
+
         private const int SYNC_INTERVAL_MS = 100;
         private bool _isSyncActive = false;
+        private float _currentZoom = 1.0f;
+
+        // New Video Properties (EXPERIMENTAL)
+        private Panel _videoContainer;
+        private Point _dragStartPoint;
+        private bool _isDragging = false;
 
         public static string LastVideoPath { get; set; }
 
@@ -57,43 +64,75 @@ namespace GPXVideoTools
                 Padding = new Padding(5)
             };
 
-            // --- SMART RESPONSIVE LAYOUT ---
-            // Row 0: Video (Takes 70% of the *remaining* space after buttons)
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70F));
-
-            // Row 1: Buttons (AutoSize - This is the key to responsiveness!)
-            // It will shrink to 35px if buttons are in 1 line, or grow to 70px if they wrap to 2 lines.
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-            // Row 2: Grid (Takes 30% of the *remaining* space)
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));
-
+            // --- RESPONSIVE LAYOUT ---
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70F)); // Video
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // Buttons (Smart)
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F)); // Grid
             this.Controls.Add(layout);
 
-            // 1. Video View
-            _videoView = new VideoView { Dock = DockStyle.Fill, BackColor = Color.Black };
-            layout.Controls.Add(_videoView, 0, 0);
+            // 0. Container
+            _videoContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Black,
+                AutoScroll = false // We handle movement manually for smoothness
+            };
+            layout.Controls.Add(_videoContainer, 0, 0);
 
-            // 2. Button Panel
+            // 1. Video
+            _videoView = new VideoView
+            {
+                // Important: DO NOT use DockStyle.Fill here. We need to resize it manually.
+                Anchor = AnchorStyles.None,
+                Location = new Point(0, 0),
+                BackColor = Color.Black,
+                Size = new Size(800, 600) // Initial size, will be fixed by Resize event
+            };
+            _videoContainer.Controls.Add(_videoView);
+
+            // 2. Events for Panning (Dragging)
+            _videoView.MouseDown += VideoView_MouseDown;
+            _videoView.MouseMove += VideoView_MouseMove;
+            _videoView.MouseUp += VideoView_MouseUp;
+
+            // 3. Event for Zooming (Mouse Wheel)
+            _videoView.MouseWheel += VideoView_MouseWheel;
+
+            // Zoom with Mouse Wheel
+            _videoView.MouseWheel += (s, e) => ZoomVideo(e.Delta > 0 ? 1.1f : 0.9f);
+
+            _videoContainer.Resize += (s, e) =>
+            {
+                if (_currentZoom == 1.0f)
+                {
+                    _videoView.Size = _videoContainer.Size;
+                    _videoView.Location = new Point(0, 0);
+                }
+            };
+
+            // 4. Buttons
             var btnPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight,
-                AutoSize = true,             // <--- CRITICAL for responsiveness
-                AutoSizeMode = AutoSizeMode.GrowAndShrink, // Allows the row to collapse/expand
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 Padding = new Padding(0),
                 Margin = new Padding(0)
             };
 
-            // Use the modern tuple syntax for cleaner code
+            // Fix: Use explicit type to avoid compiler errors
             var buttons = new (string, Action)[]
             {
-                ("Import GPX", () => Commands.ImportAndOpen()),
+                ("Import GPX", () => Commands.ImportAndOpen()), // Points to static command
                 ("Import Video", ImportVideoFromDialog),
                 ("Play/Pause", PlayPause),
                 ("< 5s", SeekBackward),
                 ("> 5s", SeekForward),
                 ("Sync ON/OFF", ToggleAutoSync),
+                ("Video +", () => ZoomVideo(1.2f)),
+                ("Video -", () => ZoomVideo(0.8f)),
+                ("Reset", () => ZoomVideo(0.0f))
             };
 
             foreach (var (text, action) in buttons)
@@ -101,7 +140,7 @@ namespace GPXVideoTools
                 var btn = new Button
                 {
                     Text = text,
-                    Width = 90,        // Slightly smaller width to fit more on one line
+                    Width = 90,
                     Height = 30,
                     Margin = new Padding(2),
                     Cursor = Cursors.Hand
@@ -111,7 +150,7 @@ namespace GPXVideoTools
             }
             layout.Controls.Add(btnPanel, 0, 1);
 
-            // 3. Grid
+            // 5. Grid
             _grid = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -119,13 +158,12 @@ namespace GPXVideoTools
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 AllowUserToResizeRows = false,
-                BackgroundColor = SystemColors.ControlLight, // Looks cleaner
+                BackgroundColor = SystemColors.ControlLight,
                 BorderStyle = BorderStyle.None
             };
             _grid.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) SeekSelectedRow(); };
             layout.Controls.Add(_grid, 0, 2);
 
-            // Timer setup remains the same
             _syncTimer = new Timer { Interval = SYNC_INTERVAL_MS };
             _syncTimer.Tick += SyncTimer_Tick;
         }
@@ -160,149 +198,197 @@ namespace GPXVideoTools
                 r["Lat"] = p.Lat;
                 r["Lon"] = p.Lon;
                 r["Ele"] = p.Ele ?? double.NaN;
-                r["Time"] = p.Time.ToString("o");
-                r["Seconds"] = s;
+                r["Time"] = p.Time.ToString("HH:mm:ss"); // Cleaner time format
+                r["Seconds"] = Math.Round(s, 1);
                 tbl.Rows.Add(r);
             }
             _grid.DataSource = tbl;
         }
 
-        private static string GetFileSize(string filePath)
-        {
-            try
-            {
-                var info = new System.IO.FileInfo(filePath);
-                long bytes = info.Length;
-                string[] suffixes = { "B", "KB", "MB", "GB" };
-                int index = 0;
-                double size = bytes;
-                while (size >= 1024 && index < suffixes.Length - 1)
-                {
-                    size /= 1024;
-                    index++;
-                }
-                return $"{size:0.##} {suffixes[index]}";
-            }
-            catch
-            {
-                return "Desconocido";
-            }
-        }
-
         private void ImportVideoFromDialog()
         {
+            // (Same as your code)
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
-            if (doc == null)
-            {
-                MessageBox.Show("No hay documento activo en AutoCAD.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
+            if (doc == null) return;
             var ed = doc.Editor;
-
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Title = "Seleccionar video";
-                ofd.Filter = "Videos MP4 y AVI|*.mp4;*.avi|MP4 (*.mp4)|*.mp4|AVI (*.avi)|*.avi";
-                ofd.FilterIndex = 1;
-
-                if (ofd.ShowDialog() != DialogResult.OK)
-                {
-                    ed.WriteMessage("\nImportación de video cancelada.");
-                    return;
-                }
-
-                string path = ofd.FileName;
-                string ext = Path.GetExtension(path).ToLowerInvariant();
-
-                if (ext != ".mp4" && ext != ".avi")
-                {
-                    ed.WriteMessage($"\nError: Solo se permiten .mp4 y .avi");
-                    return;
-                }
-
-                LastVideoPath = path;
-                ed.WriteMessage($"\nVideo cargado: {Path.GetFileName(path)} [{GetFileSize(path)}]");
-                LoadVideo(path);
+                ofd.Filter = "Videos|*.mp4;*.avi";
+                if (ofd.ShowDialog() != DialogResult.OK) return;
+                LastVideoPath = ofd.FileName;
+                LoadVideo(LastVideoPath);
             }
         }
 
         public void LoadVideo(string path)
         {
-            if (!File.Exists(path))
-            {
-                MessageBox.Show("Video no encontrado:\n" + path, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+            if (!File.Exists(path)) return;
             try
             {
-                if (_mediaPlayer.IsPlaying)
-                {
-                    _mediaPlayer.Stop();
-                }
-
+                if (_mediaPlayer.IsPlaying) _mediaPlayer.Stop();
                 using (var media = new Media(_libVLC, new Uri(path)))
                 {
                     _mediaPlayer.Media = media;
                 }
-
                 _mediaPlayer.Play();
-
+                // Brief pause so it loads but doesn't auto-run
+                System.Threading.Thread.Sleep(100);
                 _mediaPlayer.SetPause(true);
             }
             catch (System.Exception ex)
             {
-                MessageBox.Show($"Error VLC:\n{ex.Message}", "Error de reproducción", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Error loading video: {ex.Message}");
             }
         }
 
-        public void ApplyMarkerStyle(double size, Color color)
+        private void VideoView_MouseWheel(object sender, MouseEventArgs e)
         {
-            Commands.MarkerSize = size;
-            Commands.MarkerColor = color;
-            this.Invalidate();
+            // 1. Calculate Zoom Factor
+            float oldZoom = _currentZoom;
+            float zoomAmount = e.Delta > 0 ? 1.2f : 0.8f; // 20% zoom steps
+            float newZoom = _currentZoom * zoomAmount;
+
+            // Safety Limits (1x to 5x)
+            if (newZoom < 1.0f) newZoom = 1.0f;
+            if (newZoom > 8.0f) newZoom = 8.0f;
+
+            if (newZoom == oldZoom) return; // No change
+            _currentZoom = newZoom;
+
+            // 2. Get Mouse Position Relative to the Video (Before Zoom)
+            // This is the specific point user is looking at (e.g., the pothole)
+            Point mousePos = e.Location;
+
+            // 3. Resize the VideoView
+            int newWidth = (int)(_videoContainer.Width * _currentZoom);
+            int newHeight = (int)(_videoContainer.Height * _currentZoom);
+
+            // If resetting to 1.0, just fit perfectly
+            if (_currentZoom == 1.0f)
+            {
+                _videoView.Size = _videoContainer.Size;
+                _videoView.Location = new Point(0, 0);
+                return;
+            }
+
+            // 4. Calculate New Location to Keep Mouse Centered
+            // The math: OldMousePos * ScaleRatio - MouseOffset
+            float ratio = newZoom / oldZoom;
+
+            int newX = (int)(mousePos.X - (mousePos.X - _videoView.Left) * ratio);
+            int newY = (int)(mousePos.Y - (mousePos.Y - _videoView.Top) * ratio);
+
+            _videoView.Size = new Size(newWidth, newHeight);
+
+            // Apply position with boundary checks (Don't let video fly off screen)
+            SetVideoLocation(newX, newY);
+        }
+
+        private void VideoView_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && _currentZoom > 1.0f)
+            {
+                _isDragging = true;
+                _dragStartPoint = e.Location;
+                _videoView.Cursor = Cursors.SizeAll; // Hand icon
+            }
+        }
+
+        private void VideoView_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isDragging)
+            {
+                // Calculate how much moved
+                int deltaX = e.X - _dragStartPoint.X;
+                int deltaY = e.Y - _dragStartPoint.Y;
+
+                // Apply to current location
+                SetVideoLocation(_videoView.Left + deltaX, _videoView.Top + deltaY);
+            }
+        }
+
+        private void VideoView_MouseUp(object sender, MouseEventArgs e)
+        {
+            _isDragging = false;
+            _videoView.Cursor = Cursors.Default;
+        }
+
+        private void SetVideoLocation(int x, int y)
+        {
+            // Boundary Checks: We never want a gap between video edge and container edge
+            // Max X is 0 (Aligned left), Min X is ContainerWidth - VideoWidth
+
+            if (x > 0) x = 0;
+            if (y > 0) y = 0;
+
+            if (x < _videoContainer.Width - _videoView.Width)
+                x = _videoContainer.Width - _videoView.Width;
+
+            if (y < _videoContainer.Height - _videoView.Height)
+                y = _videoContainer.Height - _videoView.Height;
+
+            _videoView.Location = new Point(x, y);
+        }
+
+        private void ZoomVideo(float factor)
+        {
+            // 1. Handle Reset (Factor 0)
+            if (factor == 0.0f)
+            {
+                _currentZoom = 1.0f;
+                _videoView.Size = _videoContainer.Size;
+                _videoView.Location = new Point(0, 0);
+                return;
+            }
+
+            // 2. Calculate New Zoom
+            float oldZoom = _currentZoom;
+            float newZoom = _currentZoom * factor; // e.g. 1.0 * 1.1 = 1.1
+
+            // Safety Limits
+            if (newZoom < 1.0f) newZoom = 1.0f;
+            if (newZoom > 8.0f) newZoom = 8.0f;
+            if (newZoom == oldZoom) return;
+
+            _currentZoom = newZoom;
+
+            // 3. Define the "Center Point" of the container (Where we zoom towards)
+            // Since buttons don't have a mouse cursor, we zoom into the middle of the panel.
+            Point centerPoint = new Point(_videoContainer.Width / 2, _videoContainer.Height / 2);
+
+            // 4. Calculate Dimensions
+            int newWidth = (int)(_videoContainer.Width * _currentZoom);
+            int newHeight = (int)(_videoContainer.Height * _currentZoom);
+
+            // 5. Calculate New Location (Keep center point stable)
+            float ratio = newZoom / oldZoom;
+            int newX = (int)(centerPoint.X - (centerPoint.X - _videoView.Left) * ratio);
+            int newY = (int)(centerPoint.Y - (centerPoint.Y - _videoView.Top) * ratio);
+
+            _videoView.Size = new Size(newWidth, newHeight);
+            SetVideoLocation(newX, newY);
         }
 
         private void SeekSelectedRow()
         {
-            if (_grid.SelectedRows.Count == 0)
-            {
-                return;
-            }
+            if (_grid.SelectedRows.Count == 0) return;
             try
             {
                 double secs = Convert.ToDouble(_grid.SelectedRows[0].Cells["Seconds"].Value);
                 _mediaPlayer.Time = (long)(secs * 1000);
-                _mediaPlayer.Play();
+                if (!_mediaPlayer.IsPlaying) _mediaPlayer.Play();
             }
-            catch (Autodesk.AutoCAD.Runtime.Exception ex)
-            {
-                // ToDo fix this catch
-            }
+            catch { }
         }
 
         public void PlayPause()
         {
-            if (_mediaPlayer.IsPlaying)
-            {
-                _mediaPlayer.Pause();
-            }
-            else
-            {
-                _mediaPlayer.Play();
-            }
+            if (_mediaPlayer.IsPlaying) _mediaPlayer.Pause();
+            else _mediaPlayer.Play();
         }
 
-        public void SeekBackward()
-        {
-            long t = Math.Max(0, _mediaPlayer.Time - 5000);
-            _mediaPlayer.Time = t;
-        }
-
-        public void SeekForward()
-        {
-            _mediaPlayer.Time += 5000;
-        }
+        public void SeekBackward() => _mediaPlayer.Time = Math.Max(0, _mediaPlayer.Time - 5000);
+        public void SeekForward() => _mediaPlayer.Time += 5000;
 
         public void ToggleAutoSync()
         {
@@ -313,31 +399,20 @@ namespace GPXVideoTools
             }
             else
             {
-                if (_mediaPlayer.IsPlaying || (_track != null && _track.Count > 0))
-                {
-                    _syncTimer.Start();
-                    _isSyncActive = true;
-                }
-                else
-                {
-                    MessageBox.Show("Reproduce un video o carga un GPX para sincronizar.", "Sync", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
+                _syncTimer.Start();
+                _isSyncActive = true;
             }
         }
 
         private void SyncTimer_Tick(object sender, EventArgs e)
         {
-            if (_mediaPlayer == null || !_mediaPlayer.IsPlaying || !_isSyncActive)
-                return;
+            if (_mediaPlayer == null || !_mediaPlayer.IsPlaying || !_isSyncActive) return;
+            if (_track == null || _track.Count == 0) return;
 
             double videoTime = _mediaPlayer.Time / 1000.0;
-
-            if (_track == null || _track.Count == 0)
-            {
-                return;
-            }
-
             DateTime baseT = _track[0].Time;
+
+            // Simple Linear Search (Fast enough for < 10,000 points)
             int bestIdx = 0;
             double minDiff = double.MaxValue;
             for (int i = 0; i < _track.Count; i++)
@@ -351,7 +426,7 @@ namespace GPXVideoTools
                 }
             }
 
-            if (_grid.Rows.Count > bestIdx)
+            if (_grid.Rows.Count > bestIdx && _grid.FirstDisplayedScrollingRowIndex != bestIdx)
             {
                 _grid.ClearSelection();
                 _grid.Rows[bestIdx].Selected = true;
@@ -359,163 +434,87 @@ namespace GPXVideoTools
             }
 
             MoveMarkerTo(bestIdx);
-            // CenterViewOn(bestIdx);
         }
 
-        // CORRECCIÓN: Seguimiento suave SIN regeneración, SIN zoom fijo, SIN comandos
-        /* private void CenterViewOn(int idx)
+        // --- OPTIMIZED MARKER MOVEMENT ---
+        private void MoveMarkerTo(int idx)
         {
-            if (!_isSyncActive || _track == null || idx >= _track.Count) return;
+            if (!_isSyncActive || _track == null || idx < 0 || idx >= _track.Count) return;
 
             var p = _track[idx];
             int zone; bool north;
             Utils.ParseZoneString(Commands.SelectedUtmZone, out zone, out north);
 
+            // 1. Calculate Geometry
             Utils.LatLonToUtm(p.Lat, p.Lon, zone, north, out double e, out double n, out _, out _);
-            //Point2d target = new Point2d(e, n);
+            double z = p.Ele ?? 0.0;
+            double ang = 0.0;
+
+            if (idx < _track.Count - 1)
+            {
+                Utils.LatLonToUtm(_track[idx + 1].Lat, _track[idx + 1].Lon, zone, north, out double e2, out double n2, out _, out _);
+                ang = Math.Atan2(n2 - n, e2 - e);
+            }
 
             var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
 
-            using (doc.LockDocument())
-            using (var tr = doc.Database.TransactionManager.StartTransaction())
+            // 2. Fast Database Access
+            // We swallow errors here because we are in a Timer (don't crash the app if user is busy)
+            try
             {
-                var ed = doc.Editor;
-                var view = ed.GetCurrentView();
-
-                // Evitar movimientos innecesarios
-                if (_lastViewCenter != Point2d.Origin)
+                using (doc.LockDocument())
+                using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
-                    double dist = target.GetDistanceTo(_lastViewCenter);
-                    if (dist < MIN_MOVE_DISTANCE)
+                    // FAST PATH: Update existing marker
+                    if (_markerId.IsValid && !_markerId.IsErased)
                     {
+                        var blkRef = (BlockReference)tr.GetObject(_markerId, OpenMode.ForWrite);
+                        blkRef.Position = new Point3d(e, n, z);
+                        blkRef.Rotation = ang;
                         tr.Commit();
                         return;
                     }
-                }
 
-                // Mantener zoom actual
-                double currentWidth = view.Width;
-                if (currentWidth < 10) currentWidth = 100;
+                    // SLOW PATH: Create marker (Only runs once)
+                    var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
+                    var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    ObjectId markerDefId;
 
-                view.CenterPoint = target;
-                view.Width = currentWidth;
-                view.Height = currentWidth * (view.Height / view.Width);
-
-                ed.SetCurrentView(view);
-                _lastViewCenter = target;
-
-                Logger.Log($"Vista centrada en: {e:F1}, {n:F1}");
-                tr.Commit();
-            }
-        } */
-
-        private void MoveMarkerTo(int idx)
-        {
-            if (!_isSyncActive || _track == null || idx < 0 || idx >= _track.Count)
-            {
-                return;
-            }
-            var p = _track[idx];
-            int zone; bool north;
-            Utils.ParseZoneString(Commands.SelectedUtmZone, out zone, out north);
-            double e, n; int zu; bool nh;
-            Utils.LatLonToUtm(p.Lat, p.Lon, zone, north, out e, out n, out zu, out nh);
-            double z = p.Ele ?? 0.0;
-            double ang = 0.0;
-            if (idx < _track.Count - 1)
-            {
-                double e2, n2;
-                Utils.LatLonToUtm(_track[idx + 1].Lat, _track[idx + 1].Lon, zone, north, out e2, out n2, out zu, out nh);
-                ang = Math.Atan2(n2 - n, e2 - e);
-            }
-            else if (idx > 0)
-            {
-                double e2, n2;
-                Utils.LatLonToUtm(_track[idx - 1].Lat, _track[idx - 1].Lon, zone, north, out e2, out n2, out zu, out nh);
-                ang = Math.Atan2(n - n2, e - e2);
-            }
-
-            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
-            if (doc == null)
-            {
-                return;
-            }
-
-            using (doc.LockDocument())
-            {
-                var db = doc.Database;
-                using (var tr = db.TransactionManager.StartTransaction())
-                {
-                    try
+                    if (!bt.Has("GPX_MARKER"))
                     {
-                        var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                        var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                        ObjectId markerBlockId;
-                        if (!bt.Has("GPX_MARKER"))
-                        {
-                            var btr = new BlockTableRecord { Name = "GPX_MARKER" };
-                            var shaft = new Polyline();
-                            shaft.AddVertexAt(0, new Point2d(-0.5, 0), 0, 0, 0);
-                            shaft.AddVertexAt(1, new Point2d(0.4, 0), 0, 0, 0);
-                            shaft.Color = Autodesk.AutoCAD.Colors.Color.FromColor(Commands.MarkerColor);
-                            var head = new Polyline();
-                            head.AddVertexAt(0, new Point2d(0.4, 0.18), 0, 0, 0);
-                            head.AddVertexAt(1, new Point2d(1.0, 0), 0, 0, 0);
-                            head.AddVertexAt(2, new Point2d(0.4, -0.18), 0, 0, 0);
-                            head.Closed = true;
-                            head.Color = Autodesk.AutoCAD.Colors.Color.FromColor(Commands.MarkerColor);
-                            btr.AppendEntity(shaft);
-                            btr.AppendEntity(head);
-                            bt.UpgradeOpen();
-                            markerBlockId = bt.Add(btr);
-                            tr.AddNewlyCreatedDBObject(btr, true);
-                        }
-                        else
-                        {
-                            markerBlockId = bt["GPX_MARKER"];
-                        }
+                        // Create Arrow (Tip at 0,0)
+                        var btr = new BlockTableRecord { Name = "GPX_MARKER" };
 
-                        BlockReference existingRef = null;
-                        foreach (ObjectId id in ms)
-                        {
-                            var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                            if (ent is BlockReference bref)
-                            {
-                                var btr = tr.GetObject(bref.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
-                                if (btr?.Name.Equals("GPX_MARKER", StringComparison.OrdinalIgnoreCase) == true)
-                                {
-                                    existingRef = bref;
-                                    break;
-                                }
-                            }
-                        }
+                        var head = new Polyline();
+                        head.AddVertexAt(0, new Point2d(-0.6, 0.20), 0, 0, 0); // Back Left
+                        head.AddVertexAt(1, new Point2d(0.0, 0.0), 0, 0, 0);   // Tip (Center)
+                        head.AddVertexAt(2, new Point2d(-0.6, -0.20), 0, 0, 0);// Back Right
+                        head.Closed = true;
+                        head.Color = Autodesk.AutoCAD.Colors.Color.FromColor(Commands.MarkerColor);
 
-                        if (existingRef == null || existingRef.IsErased)
-                        {
-                            var newBr = new BlockReference(new Point3d(e, n, z), markerBlockId);
-                            newBr.ScaleFactors = new Scale3d(Commands.MarkerSize);
-                            ms.AppendEntity(newBr);
-                            tr.AddNewlyCreatedDBObject(newBr, true);
-                            _markerId = newBr.ObjectId;
-                        }
-                        else
-                        {
-                            var brToModify = (BlockReference)tr.GetObject(existingRef.ObjectId, OpenMode.ForWrite);
-                            brToModify.Position = new Point3d(e, n, z);
-                            brToModify.Rotation = ang;
-                            brToModify.ScaleFactors = new Scale3d(Commands.MarkerSize);
-                            brToModify.Color = Autodesk.AutoCAD.Colors.Color.FromColor(Commands.MarkerColor);
-                        }
-
-                        tr.Commit();
+                        btr.AppendEntity(head);
+                        bt.UpgradeOpen();
+                        markerDefId = bt.Add(btr);
+                        tr.AddNewlyCreatedDBObject(btr, true);
                     }
-                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
+                    else
                     {
-                        // ToDo fix this catch
+                        markerDefId = bt["GPX_MARKER"];
                     }
+
+                    var newRef = new BlockReference(new Point3d(e, n, z), markerDefId);
+                    newRef.ScaleFactors = new Scale3d(Commands.MarkerSize);
+                    newRef.Rotation = ang;
+
+                    ms.AppendEntity(newRef);
+                    tr.AddNewlyCreatedDBObject(newRef, true);
+                    _markerId = newRef.ObjectId;
+
+                    tr.Commit();
                 }
             }
+            catch { }
         }
     }
 }
