@@ -13,25 +13,39 @@
 	</PropertyGroup>
 
 	<ItemGroup Condition=" '$(TargetFramework)' == 'net48' ">
-		<PackageReference Include="AutoCAD.NET" Version="24.0.0" ExcludeAssets="runtime" />
-
+		<Reference Include="AcMgd">
+			<HintPath>_dependencies\Legacy\acmgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="AcDbMgd">
+			<HintPath>_dependencies\Legacy\acdbmgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="AcCoreMgd">
+			<HintPath>_dependencies\Legacy\accoremgd.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="AdWindows">
+			<HintPath>_dependencies\Legacy\AdWindows.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
 	</ItemGroup>
 
 	<ItemGroup Condition=" '$(TargetFramework)' == 'net8.0-windows' ">
 		<Reference Include="AcMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\accoremgd.dll</HintPath>
+			<HintPath>_dependencies\Modern\acmgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AcDbMgd">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll</HintPath>
+			<HintPath>_dependencies\Modern\acdbmgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
-		<Reference Include="AcMgdShared">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\acmgd.dll</HintPath>
+		<Reference Include="AcCoreMgd">
+			<HintPath>_dependencies\Modern\accoremgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AdWindows">
-			<HintPath>C:\Program Files\Autodesk\AutoCAD 2026\AdWindows.dll</HintPath>
+			<HintPath>_dependencies\Modern\AdWindows.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 	</ItemGroup>
@@ -40,6 +54,11 @@
 		<PackageReference Include="LibVLCSharp" Version="3.9.0" />
 		<PackageReference Include="LibVLCSharp.WinForms" Version="3.9.0" />
 		<PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="_dependencies\Legacy\" />
+	  <Folder Include="_dependencies\Modern\" />
 	</ItemGroup>
 
 </Project>

@@ -53,7 +53,7 @@ namespace GPXVideoTools
 
         public static void Hide()
         {
-            _ps?.Visible = false;
+            // _ps?.Visible = false;
         }
 
         // Métodos seguros
