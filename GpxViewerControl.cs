@@ -35,6 +35,11 @@ namespace GPXVideoTools
         private Point _dragStartPoint;
         private bool _isDragging = false;
 
+        // info superimposed on video container
+        private Panel _overlayPanel;
+        private Label _lblRouteName;
+        private Label _lblDistance;
+
         public static string LastVideoPath { get; set; }
 
         public GpxViewerControl()
@@ -90,6 +95,41 @@ namespace GPXVideoTools
             };
             _videoContainer.Controls.Add(_videoView);
 
+            // 1.1 Overlay
+            _overlayPanel = new Panel
+            {
+                Size = new Size(250, 60),
+                Location = new Point(10, 10), // Margen de 10px desde la esquina superior izquierda
+                BackColor = Color.FromArgb(150, 0, 0, 0), // Negro con 150 de transparencia (0-255)
+                BorderStyle = BorderStyle.None
+            };
+
+            _videoContainer.Controls.Add(_overlayPanel);
+            _overlayPanel.BringToFront();
+
+            _lblRouteName = new Label
+            {
+                Text = "Ruta: ---",
+                ForeColor = Color.White,
+                Font = new System.Drawing.Font("Segoe UI", 10, FontStyle.Bold),
+                Location = new Point(5, 5),
+                AutoSize = true,
+                BackColor = Color.Transparent
+            };
+
+            _lblDistance = new Label
+            {
+                Text = "Distancia: 0.00 km",
+                ForeColor = Color.Yellow,
+                Font = new System.Drawing.Font("Segoe UI", 12, FontStyle.Bold),
+                Location = new Point(5, 28),
+                AutoSize = true,
+                BackColor = Color.Transparent
+            };
+
+            _overlayPanel.Controls.Add(_lblRouteName);
+            _overlayPanel.Controls.Add(_lblDistance);
+
             // 2. Events for Panning (Dragging)
             _videoView.MouseDown += VideoView_MouseDown;
             _videoView.MouseMove += VideoView_MouseMove;
@@ -127,20 +167,24 @@ namespace GPXVideoTools
                 ("Import GPX", () => Commands.ImportAndOpen()), // Points to static command
                 ("Import Video", ImportVideoFromDialog),
                 ("Play/Pause", PlayPause),
-                ("< 5s", SeekBackward),
-                ("> 5s", SeekForward),
+                ("<5s", SeekBackward),
+                (">5s", SeekForward),
                 ("Sync ON/OFF", ToggleAutoSync),
-                ("Video +", () => ZoomVideo(1.2f)),
-                ("Video -", () => ZoomVideo(0.8f)),
+                ("Z+", () => ZoomVideo(1.2f)),
+                ("Z-", () => ZoomVideo(0.8f)),
                 ("Reset", () => ZoomVideo(0.0f))
             };
 
             foreach (var (text, action) in buttons)
             {
+                int btnWidth = 90;
+                if (text == "Z+" || text == "Z-" || text == "< 5s" || text == "> 5s") btnWidth = 40;
+                else if (text == "Reset") btnWidth = 60;
+
                 var btn = new Button
                 {
                     Text = text,
-                    Width = 90,
+                    Width = btnWidth,
                     Height = 30,
                     Margin = new Padding(2),
                     Cursor = Cursors.Hand
@@ -425,6 +469,15 @@ namespace GPXVideoTools
                     bestIdx = i;
                 }
             }
+
+            double totalDist = 0;
+            for (int i = 0; i < bestIdx; i++)
+            {
+                totalDist += Utils.CalculateDistance(_track[i].Lat, _track[i].Lon, _track[i + 1].Lat, _track[i + 1].Lon);
+            }
+
+            _lblRouteName.Text = $"Ruta: {Path.GetFileName(LastVideoPath)}";
+            _lblDistance.Text = $"{totalDist:F2} km recorridos";
 
             if (_grid.Rows.Count > bestIdx && _grid.FirstDisplayedScrollingRowIndex != bestIdx)
             {
