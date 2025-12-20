@@ -39,6 +39,9 @@ namespace GPXVideoTools
         private Point _lastMousePos;
         private bool _isDragging = false;
 
+        // For track history
+        private Point3d _lastPos = new Point3d(0, 0, 0);
+
         public static string LastVideoPath { get; set; }
 
         public GpxViewerControl()
@@ -431,7 +434,10 @@ namespace GPXVideoTools
                 _lblRouteInfo.Text = "Ready: " + Path.GetFileName(path);
                 ResetVideoFit(); // Reset zoom when loading new video
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                Logger.Error($"Error al ingresar el video: {ex}");    
+            }
         }
 
         private void PopulateGrid()
@@ -458,66 +464,112 @@ namespace GPXVideoTools
         public void SeekBackward() => _mediaPlayer.Time = Math.Max(0, _mediaPlayer.Time - 5000);
         public void SeekForward() => _mediaPlayer.Time += 5000;
         public void ToggleAutoSync() { if (_syncTimer.Enabled) { _syncTimer.Stop(); _isSyncActive = false; } else { _syncTimer.Start(); _isSyncActive = true; } }
-        private void SeekSelectedRow() { if (_grid.SelectedRows.Count == 0) return; try { double s = Convert.ToDouble(_grid.SelectedRows[0].Cells["Seconds"].Value); _mediaPlayer.Time = (long)(s * 1000); if (!_mediaPlayer.IsPlaying) _mediaPlayer.Play(); } catch { } }
+        private void SeekSelectedRow() { if (_grid.SelectedRows.Count == 0) return; try { double s = Convert.ToDouble(_grid.SelectedRows[0].Cells["Seconds"].Value); _mediaPlayer.Time = (long)(s * 1000); if (!_mediaPlayer.IsPlaying) _mediaPlayer.Play(); } catch (System.Exception ex) { Logger.Error($"Error al buscar en la fila seleccionada: {ex}"); } }
 
         // Keep your existing MoveMarkerTo method here exactly as it was.
         private void MoveMarkerTo(int idx)
         {
+            // Safety check
             if (!_isSyncActive || _track == null || idx < 0 || idx >= _track.Count) return;
+
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+
             var p = _track[idx];
             int zone; bool north;
-            Utils.ParseZoneString(Commands.SelectedUtmZone, out zone, out north);
+
+            // Auto-Fix Zone if missing (prevents crashes)
+            if (string.IsNullOrEmpty(Commands.SelectedUtmZone))
+            {
+                zone = (int)((p.Lon + 180) / 6) + 1;
+                north = p.Lat >= 0;
+            }
+            else
+            {
+                Utils.ParseZoneString(Commands.SelectedUtmZone, out zone, out north);
+            }
+
+            // 3. Math Calculation (Fast, happens in RAM)
             Utils.LatLonToUtm(p.Lat, p.Lon, zone, north, out double e, out double n, out _, out _);
             double z = p.Ele ?? 0.0;
+            Point3d newPos = new Point3d(e, n, z);
+
+            // --- OPTIMIZATION FOR LOW END PC ---
+            // If the marker moved less than 10cm, DO NOT redraw. 
+            // This saves the GPU from working 60 times a second for no visible change.
+            if (_lastPos.DistanceTo(newPos) < 0.1) return;
+            _lastPos = newPos;
+
             double ang = 0.0;
             if (idx < _track.Count - 1)
             {
                 Utils.LatLonToUtm(_track[idx + 1].Lat, _track[idx + 1].Lon, zone, north, out double e2, out double n2, out _, out _);
                 ang = Math.Atan2(n2 - n, e2 - e);
             }
-            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
+
             try
             {
+                // 4. Database Update (Slow, happens on Disk/RAM)
                 using (doc.LockDocument())
-                using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
-                    if (_markerId.IsValid && !_markerId.IsErased)
+                    using (var tr = doc.Database.TransactionManager.StartTransaction())
                     {
-                        var blkRef = (BlockReference)tr.GetObject(_markerId, OpenMode.ForWrite);
-                        blkRef.Position = new Point3d(e, n, z);
-                        blkRef.Rotation = ang;
+                        // FAST PATH: Modify existing
+                        if (_markerId.IsValid && !_markerId.IsErased)
+                        {
+                            var blkRef = (BlockReference)tr.GetObject(_markerId, OpenMode.ForWrite);
+                            blkRef.Position = newPos;
+                            blkRef.Rotation = ang;
+                        }
+                        else
+                        {
+                            // SLOW PATH: Create new (Only happens once)
+                            var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
+                            var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                            ObjectId markerDefId;
+                            if (!bt.Has("GPX_MARKER"))
+                            {
+                                var btr = new BlockTableRecord { Name = "GPX_MARKER" };
+                                var head = new Polyline();
+                                head.AddVertexAt(0, new Point2d(-0.6, 0.20), 0, 0, 0);
+                                head.AddVertexAt(1, new Point2d(0.0, 0.0), 0, 0, 0);
+                                head.AddVertexAt(2, new Point2d(-0.6, -0.20), 0, 0, 0);
+                                head.Closed = true;
+                                head.Color = Autodesk.AutoCAD.Colors.Color.FromColor(Commands.MarkerColor);
+                                btr.AppendEntity(head);
+                                bt.UpgradeOpen();
+                                markerDefId = bt.Add(btr);
+                                tr.AddNewlyCreatedDBObject(btr, true);
+                            }
+                            else markerDefId = bt["GPX_MARKER"];
+
+                            var newRef = new BlockReference(newPos, markerDefId);
+                            newRef.ScaleFactors = new Scale3d(Commands.MarkerSize);
+                            newRef.Rotation = ang;
+                            ms.AppendEntity(newRef);
+                            tr.AddNewlyCreatedDBObject(newRef, true);
+                            _markerId = newRef.ObjectId;
+                        }
+
                         tr.Commit();
-                        return;
+
+                        // --- THE MAGIC FIX FOR SMOOTHNESS ---
+                        doc.TransactionManager.QueueForGraphicsFlush();
                     }
-                    var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
-                    var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    ObjectId markerDefId;
-                    if (!bt.Has("GPX_MARKER"))
-                    {
-                        var btr = new BlockTableRecord { Name = "GPX_MARKER" };
-                        var head = new Polyline();
-                        head.AddVertexAt(0, new Point2d(-0.6, 0.20), 0, 0, 0);
-                        head.AddVertexAt(1, new Point2d(0.0, 0.0), 0, 0, 0);
-                        head.AddVertexAt(2, new Point2d(-0.6, -0.20), 0, 0, 0);
-                        head.Closed = true;
-                        head.Color = Autodesk.AutoCAD.Colors.Color.FromColor(Commands.MarkerColor);
-                        btr.AppendEntity(head);
-                        bt.UpgradeOpen();
-                        markerDefId = bt.Add(btr);
-                        tr.AddNewlyCreatedDBObject(btr, true);
-                    }
-                    else markerDefId = bt["GPX_MARKER"];
-                    var newRef = new BlockReference(new Point3d(e, n, z), markerDefId);
-                    newRef.ScaleFactors = new Scale3d(Commands.MarkerSize);
-                    newRef.Rotation = ang;
-                    ms.AppendEntity(newRef);
-                    tr.AddNewlyCreatedDBObject(newRef, true);
-                    _markerId = newRef.ObjectId;
-                    tr.Commit();
                 }
+
+                // --- THE MAGIC FIX FOR IDLE MOUSE ---
+                // Tell Windows: "Repaint the AutoCAD window NOW, even if the mouse is outside."
+                doc.Editor.UpdateScreen();
+
+                // On very slow machines, this helps process the Windows Message Queue
+                System.Windows.Forms.Application.DoEvents();
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                Logger.Error($"Marker Error: {ex.Message}");
+            }
         }
     }
 }
