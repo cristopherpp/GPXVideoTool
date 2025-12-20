@@ -47,8 +47,8 @@ namespace GPXVideoTools
 
             // 2. Create Buttons (Use static fields)
             ShowPanelButton = CreateButton("Mostrar Panel", () => GpxPalette.Show(), large: true, "Abre el visor de video y GPX");
-            SyncButton = CreateButton("Sync ON/OFF", () => Commands.ToggleAutoSync(), large: false, "Activa la sincronización");
-            RouteColorButton = CreateButton("Color Ruta", () => Commands.ShowRouteColorDialog(), large: false, "Cambia el color de la polilínea");
+            //SyncButton = CreateButton("Sync ON/OFF", () => Commands.ToggleAutoSync(), large: false, "Activa la sincronización");
+            //RouteColorButton = CreateButton("Color Ruta", () => Commands.ShowRouteColorDialog(), large: false, "Cambia el color de la polilínea");
 
             UpdateRouteSwatch(Commands.RouteColor);
 

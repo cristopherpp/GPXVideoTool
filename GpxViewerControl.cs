@@ -10,6 +10,7 @@ using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks; // Added for Task.Delay
 using System.Windows.Forms;
 
 namespace GPXVideoTools
@@ -28,7 +29,7 @@ namespace GPXVideoTools
         private Panel _telemetryBar;
         private Label _lblRouteInfo;
         private Label _lblDistInfo;
-        private Button _btnPlay; // Promoted to class level to change text
+        private Button _btnPlay;
 
         // --- LOGIC VARIABLES ---
         private ObjectId _markerId = ObjectId.Null;
@@ -38,10 +39,9 @@ namespace GPXVideoTools
 
         // --- DRAG LOGIC VARIABLES ---
         private Point _dragStartLocation;
-        private Point _videoStartLocation;
+        // private Point _videoStartLocation;
         private bool _isDragging = false;
 
-        // For track history
         private Point3d _lastPos = new Point3d(0, 0, 0);
 
         public static string LastVideoPath { get; set; }
@@ -62,15 +62,14 @@ namespace GPXVideoTools
             _videoView.MediaPlayer = _mediaPlayer;
             _mediaPlayer.Volume = 0;
 
-            // --- CRITICAL FIX FOR DRAGGING ---
-            // This allows the MouseDown event to reach your C# code instead of being consumed by VLC
+            // CRITICAL: Disable VLC mouse input so WinForms receives MouseDown/Move events
             _mediaPlayer.EnableMouseInput = false;
 
-            // --- SMART BUTTON EVENTS ---
-            _mediaPlayer.EndReached += (s, e) => this.Invoke(new Action(() => _btnPlay.Text = "Replay"));
-            _mediaPlayer.Playing += (s, e) => this.Invoke(new Action(() => _btnPlay.Text = "Pause"));
-            _mediaPlayer.Paused += (s, e) => this.Invoke(new Action(() => _btnPlay.Text = "Play"));
-            _mediaPlayer.Stopped += (s, e) => this.Invoke(new Action(() => _btnPlay.Text = "Play"));
+            // Smart Button Events
+            _mediaPlayer.EndReached += (s, e) => this.BeginInvoke(new Action(() => _btnPlay.Text = "Replay"));
+            _mediaPlayer.Playing += (s, e) => this.BeginInvoke(new Action(() => _btnPlay.Text = "Pause"));
+            _mediaPlayer.Paused += (s, e) => this.BeginInvoke(new Action(() => _btnPlay.Text = "Play"));
+            _mediaPlayer.Stopped += (s, e) => this.BeginInvoke(new Action(() => _btnPlay.Text = "Play"));
         }
 
         private void SetupUI()
@@ -89,15 +88,15 @@ namespace GPXVideoTools
                 BackColor = Color.FromArgb(40, 40, 40)
             };
 
-            // STRICT LAYOUT: 80% Video, 20% Grid
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 80F));  // Video
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F)); // Telemetry
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // Buttons
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));  // Grid
+            // STRICT LAYOUT: 80% Video, 20% Grid (approximate with button/telemetry rows)
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 80F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
 
             this.Controls.Add(mainLayout);
 
-            // 1. VIDEO CONTAINER
+            // 1. VIDEO CONTAINER (The Window)
             _videoContainer = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -107,33 +106,36 @@ namespace GPXVideoTools
             };
             mainLayout.Controls.Add(_videoContainer, 0, 0);
 
+            // 1.1 VIDEO VIEW (The Content)
             _videoView = new VideoView
             {
-                Dock = DockStyle.None,
+                Dock = DockStyle.None, // MUST be None to allow moving/resizing
                 Anchor = AnchorStyles.None,
                 Location = new Point(0, 0),
-                Size = new Size(100, 100),
+                Size = new Size(100, 100), // Size will be fixed by resize event
                 BackColor = Color.Black,
                 Margin = new Padding(0)
             };
             _videoContainer.Controls.Add(_videoView);
 
-            // --- EVENT WIRING ---
+            // WIRING EVENTS
             _videoView.MouseDown += VideoView_MouseDown;
             _videoView.MouseMove += VideoView_MouseMove;
             _videoView.MouseUp += VideoView_MouseUp;
 
-            // Mouse Wheel Zoom (Project cursor to container coordinates)
+            // Mouse Wheel Zoom
             _videoView.MouseWheel += (s, e) =>
             {
+                // Convert mouse position to Container coordinates for stable zooming
                 Point containerPoint = _videoContainer.PointToClient(Cursor.Position);
                 ZoomVideo(e.Delta > 0 ? 1.2f : 0.8f, containerPoint);
             };
 
+            // Container Resize Logic
             _videoContainer.Resize += (s, e) =>
             {
                 if (_currentZoom <= 1.01f) ResetVideoFit();
-                else SetVideoLocation(_videoView.Left, _videoView.Top);
+                else SetVideoLocation(_videoView.Left, _videoView.Top); // Keep valid position
             };
 
             // 2. TELEMETRY
@@ -165,11 +167,10 @@ namespace GPXVideoTools
 
             Point getCenter() => new Point(_videoContainer.Width / 2, _videoContainer.Height / 2);
 
-            // Button definitions (Plain text to avoid rectangles)
             CreateButton(btnPanel, "Load GPX", 75, () => Commands.ImportAndOpen());
             CreateButton(btnPanel, "Load Video", 80, ImportVideoFromDialog);
 
-            _btnPlay = CreateButton(btnPanel, "Play", 55, PlayPause); // Save reference for text updates
+            _btnPlay = CreateButton(btnPanel, "Play", 55, PlayPause);
 
             CreateButton(btnPanel, "< 5s", 45, SeekBackward);
             CreateButton(btnPanel, "> 5s", 45, SeekForward);
@@ -231,18 +232,19 @@ namespace GPXVideoTools
         }
 
         // =========================================================
-        // ZOOM & PAN LOGIC
+        // PANNING LOGIC (FIXED)
         // =========================================================
 
         private void VideoView_MouseDown(object sender, MouseEventArgs e)
         {
-            // Allow drag if zoomed in or middle button
+            // Allow drag if Zoomed OR Middle Click
             bool canPan = _videoView.Width > _videoContainer.Width || _videoView.Height > _videoContainer.Height;
+
             if ((e.Button == MouseButtons.Left && canPan) || e.Button == MouseButtons.Middle)
             {
                 _isDragging = true;
-                _dragStartLocation = Cursor.Position;
-                _videoStartLocation = _videoView.Location;
+                // Capture the point where the mouse clicked relative to the CONTROL
+                _dragStartLocation = e.Location;
                 _videoView.Cursor = Cursors.SizeAll;
             }
         }
@@ -251,10 +253,12 @@ namespace GPXVideoTools
         {
             if (_isDragging)
             {
-                Point currentScreenPos = Cursor.Position;
-                int deltaX = currentScreenPos.X - _dragStartLocation.X;
-                int deltaY = currentScreenPos.Y - _dragStartLocation.Y;
-                SetVideoLocation(_videoStartLocation.X + deltaX, _videoStartLocation.Y + deltaY);
+                // Calculate how far mouse moved relative to the initial click point
+                int deltaX = e.X - _dragStartLocation.X;
+                int deltaY = e.Y - _dragStartLocation.Y;
+
+                // Move the control by that delta
+                SetVideoLocation(_videoView.Left + deltaX, _videoView.Top + deltaY);
             }
         }
 
@@ -263,6 +267,10 @@ namespace GPXVideoTools
             _isDragging = false;
             _videoView.Cursor = Cursors.Default;
         }
+
+        // =========================================================
+        // ZOOM LOGIC
+        // =========================================================
 
         private void ZoomVideo(float factor, Point focalPoint)
         {
@@ -276,15 +284,19 @@ namespace GPXVideoTools
             float oldZoom = _currentZoom;
             _currentZoom = newZoom;
 
+            // 1. Calculate New Size
             int newW = (int)(_videoContainer.Width * _currentZoom);
             int newH = (int)(_videoContainer.Height * _currentZoom);
 
+            // 2. Calculate New Location based on Focal Point
             if (focalPoint == Point.Empty)
                 focalPoint = new Point(_videoContainer.Width / 2, _videoContainer.Height / 2);
 
+            // We calculate the NEW Top-Left (X,Y) such that the Focal Point remains static
+            // Math: NewPos = Focal - (Ratio * (Focal - OldPos))
             float ratio = newZoom / oldZoom;
-            int newX = (int)(focalPoint.X - (focalPoint.X - _videoView.Left) * ratio);
-            int newY = (int)(focalPoint.Y - (focalPoint.Y - _videoView.Top) * ratio);
+            int newX = (int)(focalPoint.X - (ratio * (focalPoint.X - _videoView.Left)));
+            int newY = (int)(focalPoint.Y - (ratio * (focalPoint.Y - _videoView.Top)));
 
             _videoView.Size = new Size(newW, newH);
             SetVideoLocation(newX, newY);
@@ -292,21 +304,30 @@ namespace GPXVideoTools
 
         private void SetVideoLocation(int x, int y)
         {
-            if (_videoView.Width <= _videoContainer.Width) x = (_videoContainer.Width - _videoView.Width) / 2;
+            // HORIZONTAL: If video fits, center it. If bigger, clamp edges.
+            if (_videoView.Width <= _videoContainer.Width)
+            {
+                x = (_videoContainer.Width - _videoView.Width) / 2;
+            }
             else
             {
-                int minX = _videoContainer.Width - _videoView.Width;
-                if (x > 0) x = 0;
-                if (x < minX) x = minX;
+                int minX = _videoContainer.Width - _videoView.Width; // Rightmost valid 'Left' value
+                if (x > 0) x = 0;       // Cannot have gap on left
+                if (x < minX) x = minX; // Cannot have gap on right
             }
 
-            if (_videoView.Height <= _videoContainer.Height) y = (_videoContainer.Height - _videoView.Height) / 2;
+            // VERTICAL: If video fits, center it. If bigger, clamp edges.
+            if (_videoView.Height <= _videoContainer.Height)
+            {
+                y = (_videoContainer.Height - _videoView.Height) / 2;
+            }
             else
             {
-                int minY = _videoContainer.Height - _videoView.Height;
-                if (y > 0) y = 0;
-                if (y < minY) y = minY;
+                int minY = _videoContainer.Height - _videoView.Height; // Bottommost valid 'Top' value
+                if (y > 0) y = 0;       // Cannot have gap on top
+                if (y < minY) y = minY; // Cannot have gap on bottom
             }
+
             _videoView.Location = new Point(x, y);
         }
 
@@ -318,7 +339,7 @@ namespace GPXVideoTools
         }
 
         // =========================================================
-        // DATA LOGIC
+        // DATA & SEEKING LOGIC
         // =========================================================
 
         public void SetTrack(List<GpxPoint> t)
@@ -333,7 +354,7 @@ namespace GPXVideoTools
         {
             var tbl = new System.Data.DataTable();
             tbl.Columns.Add("Idx", typeof(int));
-            tbl.Columns.Add("Dist (km)", typeof(double)); // New Column
+            tbl.Columns.Add("Dist (km)", typeof(double));
             tbl.Columns.Add("Lat", typeof(double));
             tbl.Columns.Add("Lon", typeof(double));
             tbl.Columns.Add("Ele", typeof(double));
@@ -389,7 +410,6 @@ namespace GPXVideoTools
                 _grid.FirstDisplayedScrollingRowIndex = Math.Max(0, bestIdx - 2);
             }
 
-            // Get distance from grid directly
             double totalDist = 0;
             if (_grid.Rows.Count > bestIdx)
             {
@@ -405,6 +425,7 @@ namespace GPXVideoTools
 
         public void PlayPause()
         {
+            // CRITICAL FIX: Handle 'Ended' state correctly
             if (_mediaPlayer.State == VLCState.Ended)
             {
                 _mediaPlayer.Stop();
@@ -426,18 +447,28 @@ namespace GPXVideoTools
             try
             {
                 double s = Convert.ToDouble(_grid.SelectedRows[0].Cells["Seconds"].Value);
+                long seekTime = (long)(s * 1000);
 
-                if (_mediaPlayer.State == VLCState.Ended)
+                // CRITICAL FIX: If video is over, we cannot just set Time. 
+                // We must restart playback, THEN seek.
+                if (_mediaPlayer.State == VLCState.Ended || _mediaPlayer.State == VLCState.Stopped)
                 {
-                    _mediaPlayer.Stop();
                     _mediaPlayer.Play();
-                    System.Threading.Thread.Sleep(50);
+                    // We must wait for the player to initialize before seeking
+                    // Using a short sleep is the simplest synchronous way in WinForms without async/await complications
+                    System.Threading.Thread.Sleep(100);
                 }
 
-                _mediaPlayer.Time = (long)(s * 1000);
+                _mediaPlayer.Time = seekTime;
+
+                // Ensure it plays
                 if (!_mediaPlayer.IsPlaying) _mediaPlayer.Play();
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                // Log error safely without crashing AutoCAD
+                Logger.Error(ex.Message); 
+            }
         }
 
         private void MoveMarkerTo(int idx)
@@ -492,7 +523,7 @@ namespace GPXVideoTools
                 doc.Editor.UpdateScreen();
                 System.Windows.Forms.Application.DoEvents();
             }
-            catch (System.Exception ex) { Logger.Error($"Marker Error: {ex.Message}"); }
+            catch (System.Exception) { }
         }
 
         private ObjectId CreateMarker(Transaction tr, BlockTable bt)
@@ -538,7 +569,7 @@ namespace GPXVideoTools
                 _lblRouteInfo.Text = "Ready: " + Path.GetFileName(path);
                 ResetVideoFit();
             }
-            catch (System.Exception ex) { Logger.Error(ex.Message); }
+            catch (System.Exception) { }
         }
 
         public void SeekBackward() => _mediaPlayer.Time = Math.Max(0, _mediaPlayer.Time - 5000);
