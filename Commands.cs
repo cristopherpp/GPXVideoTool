@@ -9,7 +9,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-
 using Application = Autodesk.AutoCAD.ApplicationServices.Application;
 
 [assembly: CommandClass(typeof(GPXVideoTools.Commands))]
@@ -24,6 +23,9 @@ namespace GPXVideoTools
         public static Color RouteColor = Color.Blue;
         public static string SelectedUtmZone = "17S";
 
+        // FIX: Store the ID of the drawn route so we don't edit random lines
+        private static ObjectId _currentRouteId = ObjectId.Null;
+
         public void Initialize() => RibbonUI.CreateRibbon();
         public void Terminate() { }
 
@@ -37,7 +39,7 @@ namespace GPXVideoTools
         public static void ImportAndOpen()
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null) return; // Safety check
+            if (doc == null) return;
             var ed = doc.Editor;
 
             using (var ofd = new OpenFileDialog { Filter = "GPX files (*.gpx)|*.gpx" })
@@ -49,6 +51,15 @@ namespace GPXVideoTools
 
                 TrackPoints = list;
 
+                // Auto-detect zone if user hasn't set one, to prevent 0,0,0 coordinates
+                if (TrackPoints.Count > 0 && (SelectedUtmZone == "17S" || string.IsNullOrEmpty(SelectedUtmZone)))
+                {
+                    var p = TrackPoints[0];
+                    int z = (int)((p.Lon + 180) / 6) + 1;
+                    string hemi = p.Lat >= 0 ? "N" : "S";
+                    SelectedUtmZone = $"{z}{hemi}";
+                }
+
                 int zone; bool north;
                 Utils.ParseZoneString(SelectedUtmZone, out zone, out north);
 
@@ -59,13 +70,13 @@ namespace GPXVideoTools
                     utm.Add(new Point3d(e, n, p.Ele ?? 0.0));
                 }
 
-                // CRITICAL: Lock the document before drawing!
+                // CRITICAL: Lock document for writing
                 using (doc.LockDocument())
                 {
                     DrawPolyline(utm);
                 }
 
-                // Update the Palette UI
+                // Update Palette
                 GpxPalette.Show();
                 GpxPalette.SetTrack(TrackPoints);
             }
@@ -87,7 +98,10 @@ namespace GPXVideoTools
                     poly.AddVertexAt(i, new Point2d(pts[i].X, pts[i].Y), 0, 0, 0);
 
                 poly.Color = Autodesk.AutoCAD.Colors.Color.FromColor(RouteColor);
-                ms.AppendEntity(poly);
+                // Optional: Set Elevation if needed (Polylines are 2D, but can store elevation)
+                poly.Elevation = pts[0].Z;
+
+                _currentRouteId = ms.AppendEntity(poly); // Save the ID!
                 tr.AddNewlyCreatedDBObject(poly, true);
                 tr.Commit();
             }
@@ -108,26 +122,25 @@ namespace GPXVideoTools
 
         private static void UpdateRouteColorInDrawing()
         {
+            // FIX: Only update the specific line we drew, not random objects
+            if (_currentRouteId == ObjectId.Null || _currentRouteId.IsErased) return;
+
             var doc = Application.DocumentManager.MdiActiveDocument;
-            var db = doc.Database;
-            using (var tr = db.TransactionManager.StartTransaction())
+            if (doc == null) return;
+
+            using (doc.LockDocument())
+            using (var tr = doc.Database.TransactionManager.StartTransaction())
             {
-                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                foreach (ObjectId id in ms)
+                var obj = tr.GetObject(_currentRouteId, OpenMode.ForWrite);
+                if (obj is Polyline pl)
                 {
-                    if (tr.GetObject(id, OpenMode.ForRead) is Polyline pl)
-                    {
-                        pl.UpgradeOpen();
-                        pl.Color = Autodesk.AutoCAD.Colors.Color.FromColor(RouteColor);
-                        break;
-                    }
+                    pl.Color = Autodesk.AutoCAD.Colors.Color.FromColor(RouteColor);
                 }
                 tr.Commit();
             }
+            doc.Editor.UpdateScreen();
         }
 
-        // === CONTROLES DEL PANEL LATERAL ===
         public static void ToggleAutoSync() => GpxPalette.Control?.ToggleAutoSync();
     }
 }

@@ -21,7 +21,7 @@ How to build:
    - Copy GPXVideoTools.dll to a folder.
    - Place libvlc native libraries (libvlc.dll, libvlccore.dll and the /plugins folder) from a matching VLC build next to the DLL, or install VLC and set PATH accordingly.
 7. In AutoCAD: NETLOAD -> select GPXVideoTools.dll
-8. Use the Ribbon tab "GPX Video".
+8. Use the Ribbon tab "VIDEO TRACKER".
 
 Notes on libVLC:
 - libVLCSharp requires native libvlc binaries. For deployment, include the matching libvlc redistribution (x64/x86) and ensure the native binaries are discoverable at runtime (same folder or PATH).
