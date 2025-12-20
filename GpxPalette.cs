@@ -26,7 +26,7 @@ namespace GPXVideoTools
                 // Primera vez
                 _control = new GPXVideoTools.GpxViewerControl();
 
-                _ps = new Autodesk.AutoCAD.Windows.PaletteSet("Vision Tracer CAD 1.0");
+                _ps = new Autodesk.AutoCAD.Windows.PaletteSet("VISION TRACKER CAD 1.0");
 
                 // Estilos básicos
                 _ps.Style = Autodesk.AutoCAD.Windows.PaletteSetStyles.ShowAutoHideButton |

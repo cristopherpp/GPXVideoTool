@@ -76,10 +76,10 @@ namespace GPXVideoTools
                 BackColor = Color.FromArgb(40, 40, 40) // Ensure background matches
             };
 
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 65F)); // Video
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 80F)); // Video
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F)); // Telemetry
             mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // Buttons
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 35F)); // Grid
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 20F)); // Grid
 
             this.Controls.Add(mainLayout);
 
@@ -355,7 +355,7 @@ namespace GPXVideoTools
         }
 
         // =========================================================
-        // APP LOGIC (Sync, Import, etc.) - UNCHANGED
+        // APP LOGIC (Sync, Import, etc.)
         // =========================================================
 
         public void SetTrack(List<GpxPoint> t)
